@@ -20,14 +20,14 @@ answer_dir = "log/answer"
 train_record_file = os.path.join(target_dir, "train.tfrecords")
 dev_record_file = os.path.join(target_dir, "dev.tfrecords")
 test_record_file = os.path.join(target_dir, "test.tfrecords")
-word_emb_file = os.path.join(target_dir, "word_emb.json")
+word_emb_file = os.path.join(target_dir, "word_emb.json")  # id号->向量
 char_emb_file = os.path.join(target_dir, "char_emb.json")
 train_eval = os.path.join(target_dir, "train_eval.json")
 dev_eval = os.path.join(target_dir, "dev_eval.json")
 test_eval = os.path.join(target_dir, "test_eval.json")
 dev_meta = os.path.join(target_dir, "dev_meta.json")
 test_meta = os.path.join(target_dir, "test_meta.json")
-word2idx_file = os.path.join(target_dir, "word2idx.json")
+word2idx_file = os.path.join(target_dir, "word2idx.json")  # 词->id号
 char2idx_file = os.path.join(target_dir, "char2idx.json")
 answer_file = os.path.join(answer_dir, "answer.json")
 
