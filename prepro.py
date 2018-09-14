@@ -252,8 +252,8 @@ def prepro(config):
     char_emb_mat, char2idx_dict = get_embedding(
         char_counter, "char", emb_file=char_emb_file, size=char_emb_size, vec_size=char_emb_dim, token2idx_dict=char2idx_dict)
 
-    train_meta = build_features(config, train_examples, "train",
-                                config.train_record_file, word2idx_dict, char2idx_dict)
+    build_features(config, train_examples, "train",
+                   config.train_record_file, word2idx_dict, char2idx_dict)
     dev_meta = build_features(config, dev_examples, "dev",
                               config.dev_record_file, word2idx_dict, char2idx_dict)
     test_meta = build_features(config, test_examples, "test",
