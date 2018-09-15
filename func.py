@@ -27,6 +27,7 @@ class cudnn_gru:
             self.dropout_mask.append((mask_fw, mask_bw, ))
 
     def __call__(self, inputs, seq_len, keep_prob=1.0, is_train=None, concat_layers=True):
+        # cudnn GRU需要交换张量的维度，可能是便于计算
         outputs = [tf.transpose(inputs, [1, 0, 2])]
         for layer in range(self.num_layers):
             gru_fw, gru_bw = self.grus[layer]
@@ -60,8 +61,10 @@ class native_gru:
         self.scope = scope
         for layer in range(num_layers):
             input_size_ = input_size if layer == 0 else 2 * num_units
+            # 双向Bi-GRU f:forward b:back
             gru_fw = tf.contrib.rnn.GRUCell(num_units)
             gru_bw = tf.contrib.rnn.GRUCell(num_units)
+            # tf.tile 平铺给定的张量，这里是将初始状态扩张到batch_size倍
             init_fw = tf.tile(tf.Variable(
                 tf.zeros([1, num_units])), [batch_size, 1])
             init_bw = tf.tile(tf.Variable(
@@ -74,16 +77,24 @@ class native_gru:
             self.inits.append((init_fw, init_bw, ))
             self.dropout_mask.append((mask_fw, mask_bw, ))
 
-    def __call__(self, inputs, seq_len, keep_prob=1.0, is_train=None, concat_layers=True):
+    def __call__(self, inputs, seq_len, concat_layers=True):
+        """
+        运行RNN
+        这里的keep_prob和is_train没用，在__init__中就已设置好了
+        """
         outputs = [inputs]
         with tf.variable_scope(self.scope):
             for layer in range(self.num_layers):
                 gru_fw, gru_bw = self.grus[layer]
                 init_fw, init_bw = self.inits[layer]
                 mask_fw, mask_bw = self.dropout_mask[layer]
+                # 正向RNN
                 with tf.variable_scope("fw_{}".format(layer)):
+                    # 每一层使用上层的输出
+                    # dynamic_rnn中的超过seq_len的部分就不计算了，state直接重复，output直接清零，节省资源
                     out_fw, _ = tf.nn.dynamic_rnn(
                         gru_fw, outputs[-1] * mask_fw, seq_len, initial_state=init_fw, dtype=tf.float32)
+                # 反向RNN
                 with tf.variable_scope("bw_{}".format(layer)):
                     inputs_bw = tf.reverse_sequence(
                         outputs[-1] * mask_bw, seq_lengths=seq_len, seq_dim=1, batch_dim=0)
@@ -91,6 +102,7 @@ class native_gru:
                         gru_bw, inputs_bw, seq_len, initial_state=init_bw, dtype=tf.float32)
                     out_bw = tf.reverse_sequence(
                         out_bw, seq_lengths=seq_len, seq_dim=1, batch_dim=0)
+                # 正向输出和反向输出合并
                 outputs.append(tf.concat([out_fw, out_bw], axis=2))
         if concat_layers:
             res = tf.concat(outputs[1:], axis=2)
@@ -123,6 +135,9 @@ class ptr_net:
 
 
 def dropout(args, keep_prob, is_train, mode="recurrent"):
+    """
+    dropout层,args初始式1.0
+    """
     if keep_prob < 1.0:
         noise_shape = None
         scale = 1.0
@@ -165,6 +180,9 @@ def summ(memory, hidden, mask, keep_prob=1.0, is_train=None, scope="summ"):
 
 
 def dot_attention(inputs, memory, mask, hidden, keep_prob=1.0, is_train=None, scope="dot_attention"):
+    """
+    门控attention层
+    """
     with tf.variable_scope(scope):
 
         d_inputs = dropout(inputs, keep_prob=keep_prob, is_train=is_train)
