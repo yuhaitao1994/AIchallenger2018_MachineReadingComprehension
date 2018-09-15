@@ -136,7 +136,7 @@ class ptr_net:
 
 def dropout(args, keep_prob, is_train, mode="recurrent"):
     """
-    dropout层,args初始式1.0
+    dropout层,args初始是1.0
     """
     if keep_prob < 1.0:
         noise_shape = None
@@ -153,7 +153,10 @@ def dropout(args, keep_prob, is_train, mode="recurrent"):
 
 
 def softmax_mask(val, mask):
-    return -INF * (1 - tf.cast(mask, tf.float32)) + val
+    """
+    作用是给空值处减小注意力
+    """
+    return -INF * (1 - tf.cast(mask, tf.float32)) + val  # tf.cast:true转为1.0，false转为0.0
 
 
 def pointer(inputs, state, hidden, mask, scope="pointer"):
@@ -187,33 +190,44 @@ def dot_attention(inputs, memory, mask, hidden, keep_prob=1.0, is_train=None, sc
 
         d_inputs = dropout(inputs, keep_prob=keep_prob, is_train=is_train)
         d_memory = dropout(memory, keep_prob=keep_prob, is_train=is_train)
-        JX = tf.shape(inputs)[1]
+        JX = tf.shape(inputs)[1]  # inputs的1维度，应该是c_maxlen
 
         with tf.variable_scope("attention"):
+            # inputs_的shape:[batch_size, c_maxlen, hidden]
             inputs_ = tf.nn.relu(
                 dense(d_inputs, hidden, use_bias=False, scope="inputs"))
             memory_ = tf.nn.relu(
                 dense(d_memory, hidden, use_bias=False, scope="memory"))
+            # 三维矩阵相乘，结果的shape是[batch_size, c_maxlen, q_maxlen]
             outputs = tf.matmul(inputs_, tf.transpose(
                 memory_, [0, 2, 1])) / (hidden ** 0.5)
+            # 将mask平铺成与outputs相同的形状
             mask = tf.tile(tf.expand_dims(mask, axis=1), [1, JX, 1])
             logits = tf.nn.softmax(softmax_mask(outputs, mask))
             outputs = tf.matmul(logits, memory)
+            # [batch_size, c_maxlen, 12*hidden]
             res = tf.concat([inputs, outputs], axis=2)
 
         with tf.variable_scope("gate"):
+            """
+            attention * gate
+            """
             dim = res.get_shape().as_list()[-1]
             d_res = dropout(res, keep_prob=keep_prob, is_train=is_train)
             gate = tf.nn.sigmoid(dense(d_res, dim, use_bias=False))
-            return res * gate
+            return res * gate  # 向量的逐元素相乘
 
 
 def dense(inputs, hidden, use_bias=True, scope="dense"):
+    """
+    全连接层
+    """
     with tf.variable_scope(scope):
         shape = tf.shape(inputs)
         dim = inputs.get_shape().as_list()[-1]
         out_shape = [shape[idx] for idx in range(
             len(inputs.get_shape().as_list()) - 1)] + [hidden]
+        # 三维的inputs，reshape成二维
         flat_inputs = tf.reshape(inputs, [-1, dim])
         W = tf.get_variable("W", [dim, hidden])
         res = tf.matmul(flat_inputs, W)
@@ -221,5 +235,6 @@ def dense(inputs, hidden, use_bias=True, scope="dense"):
             b = tf.get_variable(
                 "b", [hidden], initializer=tf.constant_initializer(0.))
             res = tf.nn.bias_add(res, b)
+        # outshape就是input的最后一维变成hidden
         res = tf.reshape(res, out_shape)
         return res
