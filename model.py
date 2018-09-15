@@ -26,14 +26,13 @@ class Model(object):
                                            initializer=tf.constant_initializer(0), trainable=False)
         # tf.data.iterator的get_next方法，返回dataset中下一个element的tensor对象，在sess.run中实现迭代
         """
-        c: context序列的每个词的id号的tensor(tf.int32)
+        c: context序列的每个词的id号的tensor(tf.int32)，长度应该是都取最大限制长度，空余的填充空值？(这里待定)
         q: question序列的每个词的id号的tensor(tf.int32)
-        ch: context的字符序列的tensor，本项目待定(tf.int32)
-        qh: 同上
-        y1, y2: 答案定位的tensor，本项目不需要
+        ch, qh, y1, y2: 本项目不需要，已经取消
         qa_id: question的id
+        answer: 新添加的answer标签，(0/1/2)，shape初步定义为[batch_size]
         """
-        self.c, self.q, self.ch, self.qh, self.y1, self.y2, self.qa_id = batch.get_next()
+        self.c, self.q, self.answer, self.qa_id = batch.get_next()
         self.is_train = tf.get_variable(
             "is_train", shape=[], dtype=tf.bool, trainable=False)
 
@@ -43,33 +42,28 @@ class Model(object):
         self.char_mat = tf.get_variable(
             "char_mat", initializer=tf.constant(char_mat, dtype=tf.float32))
 
-        # tf.cast将tensor转换为新的类型
+        # tf.cast将tensor转换为bool类型，生成mask，有值部分用true，空值用false
         self.c_mask = tf.cast(self.c, tf.bool)
         self.q_mask = tf.cast(self.q, tf.bool)
+        # 求每个序列的真实长度，得到_len的tensor
         self.c_len = tf.reduce_sum(tf.cast(self.c_mask, tf.int32), axis=1)
         self.q_len = tf.reduce_sum(tf.cast(self.q_mask, tf.int32), axis=1)
 
         if opt:
-            N, CL = config.batch_size, config.char_limit
+            batch_size = config.batch_size
+            # 求一个batch中序列最大长度，并按照最大长度对对tensor进行slice划分
             self.c_maxlen = tf.reduce_max(self.c_len)
             self.q_maxlen = tf.reduce_max(self.q_len)
-            self.c = tf.slice(self.c, [0, 0], [N, self.c_maxlen])
-            self.q = tf.slice(self.q, [0, 0], [N, self.q_maxlen])
-            self.c_mask = tf.slice(self.c_mask, [0, 0], [N, self.c_maxlen])
-            self.q_mask = tf.slice(self.q_mask, [0, 0], [N, self.q_maxlen])
-            self.ch = tf.slice(self.ch, [0, 0, 0], [N, self.c_maxlen, CL])
-            self.qh = tf.slice(self.qh, [0, 0, 0], [N, self.q_maxlen, CL])
-            self.y1 = tf.slice(self.y1, [0, 0], [N, self.c_maxlen])
-            self.y2 = tf.slice(self.y2, [0, 0], [N, self.c_maxlen])
+            self.c = tf.slice(self.c, [0, 0], [batch_size, self.c_maxlen])
+            self.q = tf.slice(self.q, [0, 0], [batch_size, self.q_maxlen])
+            self.c_mask = tf.slice(self.c_mask, [0, 0], [
+                                   batch_size, self.c_maxlen])
+            self.q_mask = tf.slice(self.q_mask, [0, 0], [
+                                   batch_size, self.q_maxlen])
         else:
             self.c_maxlen, self.q_maxlen = config.para_limit, config.ques_limit
 
-        self.ch_len = tf.reshape(tf.reduce_sum(
-            tf.cast(tf.cast(self.ch, tf.bool), tf.int32), axis=2), [-1])
-        self.qh_len = tf.reshape(tf.reduce_sum(
-            tf.cast(tf.cast(self.qh, tf.bool), tf.int32), axis=2), [-1])
-
-        self.ready()
+        self.RNet()  # 构造R-Net模型
 
         if trainable:
             self.lr = tf.get_variable(
@@ -83,44 +77,21 @@ class Model(object):
             self.train_op = self.opt.apply_gradients(
                 zip(capped_grads, variables), global_step=self.global_step)
 
-    def ready(self):
+    def RNet(self):
         config = self.config
-        N, PL, QL, CL, d, dc, dg = config.batch_size, self.c_maxlen, self.q_maxlen, config.char_limit, config.hidden, config.char_dim, config.char_hidden
-        gru = cudnn_gru if config.use_cudnn else native_gru
+        batch_size, PL, QL, d = config.batch_size, self.c_maxlen, self.q_maxlen, config.hidden
+        gru = cudnn_gru if config.use_cudnn else native_gru  # 选择使用哪种gru网络
 
         with tf.variable_scope("embedding"):
             # word_embedding层
-            with tf.variable_scope("char"):
-                ch_emb = tf.reshape(tf.nn.embedding_lookup(
-                    self.char_mat, self.ch), [N * PL, CL, dc])
-                qh_emb = tf.reshape(tf.nn.embedding_lookup(
-                    self.char_mat, self.qh), [N * QL, CL, dc])
-                ch_emb = dropout(
-                    ch_emb, keep_prob=config.keep_prob, is_train=self.is_train)
-                qh_emb = dropout(
-                    qh_emb, keep_prob=config.keep_prob, is_train=self.is_train)
-                cell_fw = tf.contrib.rnn.GRUCell(dg)
-                cell_bw = tf.contrib.rnn.GRUCell(dg)
-                _, (state_fw, state_bw) = tf.nn.bidirectional_dynamic_rnn(
-                    cell_fw, cell_bw, ch_emb, self.ch_len, dtype=tf.float32)
-                ch_emb = tf.concat([state_fw, state_bw], axis=1)
-                _, (state_fw, state_bw) = tf.nn.bidirectional_dynamic_rnn(
-                    cell_fw, cell_bw, qh_emb, self.qh_len, dtype=tf.float32)
-                qh_emb = tf.concat([state_fw, state_bw], axis=1)
-                qh_emb = tf.reshape(qh_emb, [N, QL, 2 * dg])
-                ch_emb = tf.reshape(ch_emb, [N, PL, 2 * dg])
-
             with tf.name_scope("word"):
+                # embedding后的size是[batch_size, max_len, vec_len]
                 c_emb = tf.nn.embedding_lookup(self.word_mat, self.c)
                 q_emb = tf.nn.embedding_lookup(self.word_mat, self.q)
 
-            # 将word_embedding和char_embedding连接，本项目用不到
-            c_emb = tf.concat([c_emb, ch_emb], axis=2)
-            q_emb = tf.concat([q_emb, qh_emb], axis=2)
-
         with tf.variable_scope("encoding"):
             # encoder层，将context和question分别输入双向GRU
-            rnn = gru(num_layers=3, num_units=d, batch_size=N, input_size=c_emb.get_shape(
+            rnn = gru(num_layers=3, num_units=d, batch_size=batch_size, input_size=c_emb.get_shape(
             ).as_list()[-1], keep_prob=config.keep_prob, is_train=self.is_train)
             c = rnn(c_emb, seq_len=self.c_len)
             q = rnn(q_emb, seq_len=self.q_len)
@@ -129,7 +100,7 @@ class Model(object):
             # 基于注意力的循环神经网络层，匹配context和question
             qc_att = dot_attention(c, q, mask=self.q_mask, hidden=d,
                                    keep_prob=config.keep_prob, is_train=self.is_train)
-            rnn = gru(num_layers=1, num_units=d, batch_size=N, input_size=qc_att.get_shape(
+            rnn = gru(num_layers=1, num_units=d, batch_size=batch_size, input_size=qc_att.get_shape(
             ).as_list()[-1], keep_prob=config.keep_prob, is_train=self.is_train)
             att = rnn(qc_att, seq_len=self.c_len)
 
@@ -137,7 +108,7 @@ class Model(object):
             # context自匹配层
             self_att = dot_attention(
                 att, att, mask=self.c_mask, hidden=d, keep_prob=config.keep_prob, is_train=self.is_train)
-            rnn = gru(num_layers=1, num_units=d, batch_size=N, input_size=self_att.get_shape(
+            rnn = gru(num_layers=1, num_units=d, batch_size=batch_size, input_size=self_att.get_shape(
             ).as_list()[-1], keep_prob=config.keep_prob, is_train=self.is_train)
             match = rnn(self_att, seq_len=self.c_len)
 
