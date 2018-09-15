@@ -85,7 +85,7 @@ class Model(object):
         with tf.variable_scope("embedding"):
             # word_embedding层
             with tf.name_scope("word"):
-                # embedding后的size是[batch_size, max_len, vec_len]
+                # embedding后的shape是[batch_size, max_len, vec_len]
                 c_emb = tf.nn.embedding_lookup(self.word_mat, self.c)
                 q_emb = tf.nn.embedding_lookup(self.word_mat, self.q)
 
@@ -93,12 +93,15 @@ class Model(object):
             # encoder层，将context和question分别输入双向GRU
             rnn = gru(num_layers=3, num_units=d, batch_size=batch_size, input_size=c_emb.get_shape(
             ).as_list()[-1], keep_prob=config.keep_prob, is_train=self.is_train)
+            # RNN每层的正向反向输出合并，本代码默认的是每层的输出也合并
+            # 所以对于3层rnn，输出的shape是[batch_size, max_len, 6*num_units]
+            # 并且，序列空值处的输出都清零了
             c = rnn(c_emb, seq_len=self.c_len)
             q = rnn(q_emb, seq_len=self.q_len)
 
         with tf.variable_scope("attention"):
             # 基于注意力的循环神经网络层，匹配context和question
-            qc_att = dot_attention(c, q, mask=self.q_mask, hidden=d,
+            qc_att = dot_attention(inputs=c, memory=q, mask=self.q_mask, hidden=d,
                                    keep_prob=config.keep_prob, is_train=self.is_train)
             rnn = gru(num_layers=1, num_units=d, batch_size=batch_size, input_size=qc_att.get_shape(
             ).as_list()[-1], keep_prob=config.keep_prob, is_train=self.is_train)
