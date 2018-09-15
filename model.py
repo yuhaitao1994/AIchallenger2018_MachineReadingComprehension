@@ -100,22 +100,31 @@ class Model(object):
             q = rnn(q_emb, seq_len=self.q_len)
 
         with tf.variable_scope("attention"):
-            # 基于注意力的循环神经网络层，匹配context和question
+            """
+            基于注意力的循环神经网络层，匹配context和question
+            """
+            # qc_att的shape [batch_size, c_maxlen, 12*hidden]
             qc_att = dot_attention(inputs=c, memory=q, mask=self.q_mask, hidden=d,
                                    keep_prob=config.keep_prob, is_train=self.is_train)
             rnn = gru(num_layers=1, num_units=d, batch_size=batch_size, input_size=qc_att.get_shape(
             ).as_list()[-1], keep_prob=config.keep_prob, is_train=self.is_train)
-            att = rnn(qc_att, seq_len=self.c_len)
+            att = rnn(qc_att, seq_len=self.c_len) # att:[batch_size, c_maxlen, 6*hidden]
 
         with tf.variable_scope("match"):
-            # context自匹配层
+            """
+            context自匹配层
+            """
             self_att = dot_attention(
                 att, att, mask=self.c_mask, hidden=d, keep_prob=config.keep_prob, is_train=self.is_train)
             rnn = gru(num_layers=1, num_units=d, batch_size=batch_size, input_size=self_att.get_shape(
             ).as_list()[-1], keep_prob=config.keep_prob, is_train=self.is_train)
-            match = rnn(self_att, seq_len=self.c_len)
+            match = rnn(self_att, seq_len=self.c_len) # match:[batch_size, c_maxlen, 6*hidden]
 
         with tf.variable_scope("YesNo_classification"):
+            """
+            对问题答案的分类层, 需要的输入有question的编码结果q和context的match
+            """
+            
 
         """
         with tf.variable_scope("pointer"):
