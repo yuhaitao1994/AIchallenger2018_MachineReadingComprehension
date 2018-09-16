@@ -50,7 +50,8 @@ def train(config):
         train_handle = sess.run(train_iterator.string_handle())
         dev_handle = sess.run(dev_iterator.string_handle())
         sess.run(tf.assign(model.is_train, tf.constant(True, dtype=tf.bool)))
-        sess.run(tf.assign(model.lr, tf.constant(lr, dtype=tf.float32)))
+        sess.run(tf.assign(model.learning_rate,
+                           tf.constant(lr, dtype=tf.float32)))
 
         for _ in tqdm(range(1, config.num_steps + 1)):
             global_step = sess.run(model.global_step) + 1
