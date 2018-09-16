@@ -125,10 +125,11 @@ class ptr_net:
         with tf.variable_scope(self.scope):
             d_match = dropout(match, keep_prob=self.keep_prob,
                               is_train=self.is_train)
+            # inp:[batch_size, 6*hidden], logits1:[batch_size, c_maxlen]
             inp, logits1 = pointer(d_match, init * self.dropout_mask, d, mask)
             d_inp = dropout(inp, keep_prob=self.keep_prob,
                             is_train=self.is_train)
-            _, state = self.gru(d_inp, init)
+            _, state = self.gru(d_inp, init)  # (inputs,states)
             tf.get_variable_scope().reuse_variables()
             _, logits2 = pointer(d_match, state * self.dropout_mask, d, mask)
             return logits1, logits2
@@ -162,7 +163,7 @@ def softmax_mask(val, mask):
 def pointer(inputs, state, hidden, mask, scope="pointer"):
     with tf.variable_scope(scope):
         u = tf.concat([tf.tile(tf.expand_dims(state, axis=1), [
-            1, tf.shape(inputs)[1], 1]), inputs], axis=2)
+            1, tf.shape(inputs)[1], 1]), inputs], axis=2)  # u:[batch_size, c_maxlen, 8*hidden]
         s0 = tf.nn.tanh(dense(u, hidden, use_bias=False, scope="s0"))
         s = dense(s0, 1, use_bias=False, scope="s")
         s1 = softmax_mask(tf.squeeze(s, [2]), mask)
@@ -172,14 +173,19 @@ def pointer(inputs, state, hidden, mask, scope="pointer"):
 
 
 def summ(memory, hidden, mask, keep_prob=1.0, is_train=None, scope="summ"):
+    """
+    对question进行最后一步的处理，可以看作是pooling吗
+    """
     with tf.variable_scope(scope):
         d_memory = dropout(memory, keep_prob=keep_prob, is_train=is_train)
         s0 = tf.nn.tanh(dense(d_memory, hidden, scope="s0"))
         s = dense(s0, 1, use_bias=False, scope="s")
+        # tf.squeeze把长度只有1的维度去掉
+        # s1:[batch_size, q_maxlen]
         s1 = softmax_mask(tf.squeeze(s, [2]), mask)
         a = tf.expand_dims(tf.nn.softmax(s1), axis=2)
-        res = tf.reduce_sum(a * memory, axis=1)
-        return res
+        res = tf.reduce_sum(a * memory, axis=1)  # 逐元素相乘，shape跟随memory一致
+        return res  # [batch_size, 2*hidden]
 
 
 def dot_attention(inputs, memory, mask, hidden, keep_prob=1.0, is_train=None, scope="dot_attention"):
@@ -205,7 +211,7 @@ def dot_attention(inputs, memory, mask, hidden, keep_prob=1.0, is_train=None, sc
             mask = tf.tile(tf.expand_dims(mask, axis=1), [1, JX, 1])
             logits = tf.nn.softmax(softmax_mask(outputs, mask))
             outputs = tf.matmul(logits, memory)
-            # [batch_size, c_maxlen, 12*hidden]
+            # res:[batch_size, c_maxlen, 12*hidden]
             res = tf.concat([inputs, outputs], axis=2)
 
         with tf.variable_scope("gate"):
