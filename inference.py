@@ -1,128 +1,183 @@
+"""
+AI Challenger观点型问题阅读理解
+
+inference.py：模型测试代码
+
+@author: yuhaitao
+"""
+# -*- coding:utf-8 -*-
+
 import tensorflow as tf
-import spacy
 import os
 import numpy as np
-import ujson as json
-'''
-测试提交
-'''
-
 
 from func import cudnn_gru, native_gru, dot_attention, summ, ptr_net
-from prepro import word_tokenize, convert_idx
 
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"  # tensorflow的log显示级别
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 # Must be consistant with training
-char_limit = 16
 hidden = 75
-char_dim = 8
-char_hidden = 100
-use_cudnn = True
-
-# File path
-target_dir = "data"
-save_dir = "log/model"
-word_emb_file = os.path.join(target_dir, "word_emb.json")
-char_emb_file = os.path.join(target_dir, "char_emb.json")
-word2idx_file = os.path.join(target_dir, "word2idx.json")
-char2idx_file = os.path.join(target_dir, "char2idx.json")
+use_cudnn = False
+batch_size = 4
 
 
 class InfModel(object):
     # Used to zero elements in the probability matrix that correspond to answer
     # spans that are longer than the number of tokens specified here.
-    max_answer_tokens = 15
 
-    def __init__(self, word_mat, char_mat):
-        self.c = tf.placeholder(tf.int32, [1, None])
-        self.q = tf.placeholder(tf.int32, [1, None])
-        self.ch = tf.placeholder(tf.int32, [1, None, char_limit])
-        self.qh = tf.placeholder(tf.int32, [1, None, char_limit])
+    def __init__(self, word_mat, char_mat, trainable=True, opt=True):
+        self.c = tf.placeholder(tf.int32, [batch_size, None])
+        self.q = tf.placeholder(tf.int32, [batch_size, None])
+        self.answer = tf.placeholder(tf.int32, [batch_size])
+        self.qa_id = tf.placeholder(tf.int32, [batch_size])
+        self.is_train = tf.placeholder(
+            tf.bool, shape=[], dtype=tf.bool, trainable=False)
         self.tokens_in_context = tf.placeholder(tf.int64)
+
+        self.global_step = tf.get_variable('global_step', shape=[], dtype=tf.int32,
+                                           initializer=tf.constant_initializer(0), trainable=False)
 
         self.word_mat = tf.get_variable("word_mat", initializer=tf.constant(
             word_mat, dtype=tf.float32), trainable=False)
-        self.char_mat = tf.get_variable(
-            "char_mat", initializer=tf.constant(char_mat, dtype=tf.float32))
 
         self.c_mask = tf.cast(self.c, tf.bool)
         self.q_mask = tf.cast(self.q, tf.bool)
         self.c_len = tf.reduce_sum(tf.cast(self.c_mask, tf.int32), axis=1)
         self.q_len = tf.reduce_sum(tf.cast(self.q_mask, tf.int32), axis=1)
 
-        self.c_maxlen = tf.reduce_max(self.c_len)
-        self.q_maxlen = tf.reduce_max(self.q_len)
+        if opt:
+            self.c_maxlen = tf.reduce_max(self.c_len)
+            self.q_maxlen = tf.reduce_max(self.q_len)
+            self.c = tf.slice(self.c, [0, 0], [batch_size, self.c_maxlen])
+            self.q = tf.slice(self.q, [0, 0], [batch_size, self.q_maxlen])
+            self.c_mask = tf.slice(self.c_mask, [0, 0], [
+                                   batch_size, self.c_maxlen])
+            self.q_mask = tf.slice(self.q_mask, [0, 0], [
+                                   batch_size, self.q_maxlen])
+        else:
+            self.c_maxlen, self.q_maxlen = config.para_limit, config.ques_limit
 
-        self.ch_len = tf.reshape(tf.reduce_sum(
-            tf.cast(tf.cast(self.ch, tf.bool), tf.int32), axis=2), [-1])
-        self.qh_len = tf.reshape(tf.reduce_sum(
-            tf.cast(tf.cast(self.qh, tf.bool), tf.int32), axis=2), [-1])
+        self.RNet()
 
-        self.ready()
+        if trainable:
+            self.learning_rate = tf.get_variable(
+                "learning_rate", shape=[], dtype=tf.float32, trainable=False)
+            self.opt = tf.train.AdadeltaOptimizer(
+                learning_rate=self.learning_rate, epsilon=1e-6)
+            grads = self.opt.compute_gradients(self.loss)
+            gradients, variables = zip(*grads)
+            capped_grads, _ = tf.clip_by_global_norm(
+                gradients, config.grad_clip)
+            self.train_op = self.opt.apply_gradients(
+                zip(capped_grads, variables), global_step=self.global_step)
 
-    def ready(self):
-        N, PL, QL, CL, d, dc, dg = \
-            1, self.c_maxlen, self.q_maxlen, char_limit, hidden, char_dim, \
-            char_hidden
+    def RNet(self):
+        PL, QL, d = self.c_maxlen, self.q_maxlenmit, hidden
         gru = cudnn_gru if use_cudnn else native_gru
 
-        with tf.variable_scope("emb"):
-            with tf.variable_scope("char"):
-                ch_emb = tf.reshape(tf.nn.embedding_lookup(
-                    self.char_mat, self.ch), [N * PL, CL, dc])
-                qh_emb = tf.reshape(tf.nn.embedding_lookup(
-                    self.char_mat, self.qh), [N * QL, CL, dc])
-                cell_fw = tf.contrib.rnn.GRUCell(dg)
-                cell_bw = tf.contrib.rnn.GRUCell(dg)
-                _, (state_fw, state_bw) = tf.nn.bidirectional_dynamic_rnn(
-                    cell_fw, cell_bw, ch_emb, self.ch_len, dtype=tf.float32)
-                ch_emb = tf.concat([state_fw, state_bw], axis=1)
-                _, (state_fw, state_bw) = tf.nn.bidirectional_dynamic_rnn(
-                    cell_fw, cell_bw, qh_emb, self.qh_len, dtype=tf.float32)
-                qh_emb = tf.concat([state_fw, state_bw], axis=1)
-                qh_emb = tf.reshape(qh_emb, [N, QL, 2 * dg])
-                ch_emb = tf.reshape(ch_emb, [N, PL, 2 * dg])
-
+        with tf.variable_scope("embedding"):
             with tf.name_scope("word"):
                 c_emb = tf.nn.embedding_lookup(self.word_mat, self.c)
                 q_emb = tf.nn.embedding_lookup(self.word_mat, self.q)
 
-            c_emb = tf.concat([c_emb, ch_emb], axis=2)
-            q_emb = tf.concat([q_emb, qh_emb], axis=2)
-
         with tf.variable_scope("encoding"):
-            rnn = gru(num_layers=3, num_units=d, batch_size=N,
-                      input_size=c_emb.get_shape().as_list()[-1])
+            rnn = gru(num_layers=3, num_units=d, batch_size=batch_size, input_size=c_emb.get_shape(
+            ).as_list()[-1], keep_prob=config.keep_prob, is_train=self.is_train)
             c = rnn(c_emb, seq_len=self.c_len)
             q = rnn(q_emb, seq_len=self.q_len)
 
         with tf.variable_scope("attention"):
-            qc_att = dot_attention(c, q, mask=self.q_mask, hidden=d)
-            rnn = gru(num_layers=1, num_units=d, batch_size=N,
-                      input_size=qc_att.get_shape().as_list()[-1])
+            qc_att = dot_attention(inputs=c, memory=q, mask=self.q_mask, hidden=d,
+                                   keep_prob=config.keep_prob, is_train=self.is_train)
+            rnn = gru(num_layers=1, num_units=d, batch_size=batch_size, input_size=qc_att.get_shape(
+            ).as_list()[-1], keep_prob=config.keep_prob, is_train=self.is_train)
             att = rnn(qc_att, seq_len=self.c_len)
 
         with tf.variable_scope("match"):
-            self_att = dot_attention(att, att, mask=self.c_mask, hidden=d)
-            rnn = gru(num_layers=1, num_units=d, batch_size=N,
-                      input_size=self_att.get_shape().as_list()[-1])
+            self_att = dot_attention(
+                att, att, mask=self.c_mask, hidden=d, keep_prob=config.keep_prob, is_train=self.is_train)
+            rnn = gru(num_layers=1, num_units=d, batch_size=batch_size, input_size=self_att.get_shape(
+            ).as_list()[-1], keep_prob=config.keep_prob, is_train=self.is_train)
+            # match:[batch_size, c_maxlen, 6*hidden]
             match = rnn(self_att, seq_len=self.c_len)
 
-        with tf.variable_scope("pointer"):
-            init = summ(q[:, :, -2 * d:], d, mask=self.q_mask)
-            pointer = ptr_net(batch=N, hidden=init.get_shape().as_list()[-1])
-            logits1, logits2 = pointer(init, match, d, self.c_mask)
+        with tf.variable_scope("YesNo_classification"):
+            init = summ(q[:, :, -2 * d:], d, mask=self.q_mask,
+                        keep_prob=config.ptr_keep_prob, is_train=self.is_train)
+            match = dropout(match, keep_prob=self.keep_prob,
+                            is_train=self.is_train)
+            final_hiddens = init.get_shape().as_list()[-1]
+            final_gru = tf.contrib.rnn.GRUCell(final_hiddens)
+            _, final_state = final_gru(match, init)
+            final_w = tf.get_variable(name="final_w", shape=[final_hiddens, 3])
+            final_b = tf.get_variable(name="final_b", shape=[
+                                      3], initializer=tf.constant_initializer(0.))
+            logits = tf.matmul(final_state, final_w)
+            logits = tf.nn.bias_add(logits, final_b)  # logits:[batch_size, 3]
 
-        with tf.variable_scope("predict"):
-            outer = tf.matmul(tf.expand_dims(tf.nn.softmax(logits1), axis=2),
-                              tf.expand_dims(tf.nn.softmax(logits2), axis=1))
-            outer = tf.cond(
-                self.tokens_in_context < self.max_answer_tokens,
-                lambda: tf.matrix_band_part(outer, 0, -1),
-                lambda: tf.matrix_band_part(outer, 0, self.max_answer_tokens))
-            self.yp1 = tf.argmax(tf.reduce_max(outer, axis=2), axis=1)
-            self.yp2 = tf.argmax(tf.reduce_max(outer, axis=1), axis=1)
+        with tf.variable_scope("softmax_and_loss"):
+            final_softmax = tf.nn.softmax(logits)
+            self.classes = tf.cast(
+                tf.argmax(logits, axis=1), dtype=tf.int32, name="classes")
+            self.loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(
+                logits=logits, labels=tf.stop_gradient(self.answer)))
+
+    def get_loss(self):
+        return self.loss
+
+    def get_global_step(self):
+        return self.global_step
+
+
+if __name__ == '__main__':
+    """
+    测试模型的demo
+    """
+    train_examples = [
+        {
+            "passage": ['苹果', '是', '甜的', '它', '是', '硬的'],
+            "question":['苹果', '是', '甜的', '吗'],
+            "answer":0,
+            "qa_id":1},
+        {
+            "passage": ['橘子', '是', '酸的', '它', '是', '软的', '也是', '好吃的'],
+            "question":['橘子', '是', '甜的', '吗'],
+            "answer":1,
+            "qa_id":2},
+        {
+            "passage": ['梨', '是', '甜的', '它', '是', '硬的'],
+            "question":['梨', '是', '软的', '吗'],
+            "answer":1,
+            "qa_id":3},
+        {
+            "passage": ['西瓜', '是', '甜的', '它', '是', '硬的', '也是', '大的', '和', '圆的'],
+            "question":['西瓜', '是', '酸的', '吗'],
+            "answer":2,
+            "qa_id":4}
+    ]
+
+    dev_examples = [
+        {
+            "passage": ['葡萄', '是', '甜的', '它', '是', '软的'],
+            "question":['葡萄', '是', '硬的', '吗'],
+            "answer":1,
+            "qa_id":5},
+        {
+            "passage": ['香蕉', '是', '甜的', '它', '是', '软的', '也是', '好吃的'],
+            "question":['香蕉', '是', '好吃的', '吗'],
+            "answer":0,
+            "qa_id":6}
+    ]
+
+    word2idx_dict = {"null":0,"苹果":1,"梨":2,"西瓜":3,"葡萄":4,"香蕉":5,"橘子":6,"甜的":7,"酸的":8,"硬的":9,\
+        "软的":10,"大的":11,"圆的":12,"好吃的":13,"是":14,"也是":15,"它":16,"和":17,"吗":18}
+
+    id2vec = {
+    0:[0.0,0.0,0.0,0.0],
+    1:[],
+    
+    }
 
 
 class Inference(object):
