@@ -39,8 +39,6 @@ class Model(object):
         # word embeddings的常量
         self.word_mat = tf.get_variable("word_mat", initializer=tf.constant(
             word_mat, dtype=tf.float32), trainable=False)
-        self.char_mat = tf.get_variable(
-            "char_mat", initializer=tf.constant(char_mat, dtype=tf.float32))
 
         # tf.cast将tensor转换为bool类型，生成mask，有值部分用true，空值用false
         self.c_mask = tf.cast(self.c, tf.bool)
