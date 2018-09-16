@@ -66,10 +66,10 @@ class Model(object):
         self.RNet()  # 构造R-Net模型
 
         if trainable:
-            self.lr = tf.get_variable(
-                "lr", shape=[], dtype=tf.float32, trainable=False)
+            self.learning_rate = tf.get_variable(
+                "learning_rate", shape=[], dtype=tf.float32, trainable=False)
             self.opt = tf.train.AdadeltaOptimizer(
-                learning_rate=self.lr, epsilon=1e-6)
+                learning_rate=self.learning_rate, epsilon=1e-6)
             grads = self.opt.compute_gradients(self.loss)
             gradients, variables = zip(*grads)
             capped_grads, _ = tf.clip_by_global_norm(
@@ -108,7 +108,8 @@ class Model(object):
                                    keep_prob=config.keep_prob, is_train=self.is_train)
             rnn = gru(num_layers=1, num_units=d, batch_size=batch_size, input_size=qc_att.get_shape(
             ).as_list()[-1], keep_prob=config.keep_prob, is_train=self.is_train)
-            att = rnn(qc_att, seq_len=self.c_len) # att:[batch_size, c_maxlen, 6*hidden]
+            # att:[batch_size, c_maxlen, 6*hidden]
+            att = rnn(qc_att, seq_len=self.c_len)
 
         with tf.variable_scope("match"):
             """
@@ -118,36 +119,35 @@ class Model(object):
                 att, att, mask=self.c_mask, hidden=d, keep_prob=config.keep_prob, is_train=self.is_train)
             rnn = gru(num_layers=1, num_units=d, batch_size=batch_size, input_size=self_att.get_shape(
             ).as_list()[-1], keep_prob=config.keep_prob, is_train=self.is_train)
-            match = rnn(self_att, seq_len=self.c_len) # match:[batch_size, c_maxlen, 6*hidden]
+            # match:[batch_size, c_maxlen, 6*hidden]
+            match = rnn(self_att, seq_len=self.c_len)
 
         with tf.variable_scope("YesNo_classification"):
             """
             对问题答案的分类层, 需要的输入有question的编码结果q和context的match
             """
-            
-
-        """
-        with tf.variable_scope("pointer"):
-            # 指针网络，本项目不需要
+            # init的shape:[batch_size, 2*hidden]
+            # 这步的作用初始猜测是将question进行pooling操作，然后再输入给一个rnn层进行分类
             init = summ(q[:, :, -2 * d:], d, mask=self.q_mask,
                         keep_prob=config.ptr_keep_prob, is_train=self.is_train)
-            pointer = ptr_net(batch=N, hidden=init.get_shape().as_list(
-            )[-1], keep_prob=config.ptr_keep_prob, is_train=self.is_train)
-            logits1, logits2 = pointer(init, match, d, self.c_mask)
+            match = dropout(match, keep_prob=self.keep_prob,
+                            is_train=self.is_train)
+            final_hiddens = init.get_shape().as_list()[-1]
+            final_gru = tf.contrib.rnn.GRUCell(final_hiddens)
+            _, final_state = final_gru(match, init)
+            final_w = tf.get_variable(name="final_w", shape=[final_hiddens, 3])
+            final_b = tf.get_variable(name="final_b", shape=[
+                                      3], initializer=tf.constant_initializer(0.))
+            logits = tf.matmul(final_state, final_w)
+            logits = tf.nn.bias_add(logits, final_b)  # logits:[batch_size, 3]
 
-        with tf.variable_scope("predict"):
-            # 预测层，本项目不需要
-            outer = tf.matmul(tf.expand_dims(tf.nn.softmax(logits1), axis=2),
-                              tf.expand_dims(tf.nn.softmax(logits2), axis=1))
-            outer = tf.matrix_band_part(outer, 0, 15)
-            self.yp1 = tf.argmax(tf.reduce_max(outer, axis=2), axis=1)
-            self.yp2 = tf.argmax(tf.reduce_max(outer, axis=1), axis=1)
-            losses = tf.nn.softmax_cross_entropy_with_logits_v2(
-                logits=logits1, labels=tf.stop_gradient(self.y1))
-            losses2 = tf.nn.softmax_cross_entropy_with_logits_v2(
-                logits=logits2, labels=tf.stop_gradient(self.y2))
-            self.loss = tf.reduce_mean(losses + losses2)
-        """
+        with tf.variable_scope("softmax_and_loss"):
+            final_softmax = tf.nn.softmax(logits)
+            self.classes = tf.cast(
+                tf.argmax(logits, axis=1), dtype=tf.int32, name="classes")
+            # 注意stop_gradient的使用，因为answer不是placeholder传进来的，所以要注明不对其计算梯度
+            self.loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(
+                logits=logits, labels=tf.stop_gradient(self.answer)))
 
     def get_loss(self):
         return self.loss
