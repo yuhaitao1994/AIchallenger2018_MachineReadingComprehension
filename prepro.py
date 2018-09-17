@@ -260,11 +260,9 @@ def prepro(config):
                                config.test_record_file, word2idx_dict, char2idx_dict, is_test=True)
 
     save(config.word_emb_file, word_emb_mat, message="word embedding")
-    save(config.char_emb_file, char_emb_mat, message="char embedding")
     save(config.train_eval_file, train_eval, message="train eval")
     save(config.dev_eval_file, dev_eval, message="dev eval")
     save(config.test_eval_file, test_eval, message="test eval")
     save(config.dev_meta, dev_meta, message="dev meta")
     save(config.word2idx_file, word2idx_dict, message="word2idx")
-    save(config.char2idx_file, char2idx_dict, message="char2idx")
     save(config.test_meta, test_meta, message="test meta")

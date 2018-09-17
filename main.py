@@ -34,7 +34,7 @@ def train(config):
     train_iterator = train_dataset.make_one_shot_iterator()
     dev_iterator = dev_dataset.make_one_shot_iterator()
 
-    model = Model(config, iterator, word_mat, char_mat)
+    model = Model(config, iterator, word_mat)
 
     sess_config = tf.ConfigProto(allow_soft_placement=True)
     sess_config.gpu_options.allow_growth = True
@@ -134,6 +134,7 @@ def test(config):
     model = Model(config, test_batch, word_mat, char_mat, trainable=False)
 
     sess_config = tf.ConfigProto(allow_soft_placement=True)
+    sess_config.gpu_options.per_process_gpu_memory_fraction = 0.9
     sess_config.gpu_options.allow_growth = True
 
     with tf.Session(config=sess_config) as sess:

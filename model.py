@@ -12,7 +12,7 @@ from func import cudnn_gru, native_gru, dot_attention, summ, dropout, ptr_net
 
 
 class Model(object):
-    def __init__(self, config, batch, word_mat=None, char_mat=None, trainable=True, opt=True):
+    def __init__(self, config, batch, word_mat=None, trainable=True, opt=True):
         """
         模型初始化函数
         Args:
@@ -127,12 +127,13 @@ class Model(object):
             # init的shape:[batch_size, 2*hidden]
             # 这步的作用初始猜测是将question进行pooling操作，然后再输入给一个rnn层进行分类
             init = summ(q[:, :, -2 * d:], d, mask=self.q_mask,
-                        keep_prob=config.ptr_keep_prob, is_train=self.is_train)
-            match = dropout(match, keep_prob=self.keep_prob,
+                        keep_prob=config.keep_prob, is_train=self.is_train)
+            match = dropout(match, keep_prob=config.keep_prob,
                             is_train=self.is_train)
             final_hiddens = init.get_shape().as_list()[-1]
             final_gru = tf.contrib.rnn.GRUCell(final_hiddens)
-            _, final_state = final_gru(match, init)
+            _, final_state = tf.nn.dynamic_rnn(
+                final_gru, match, initial_state=init, dtype=tf.float32)
             final_w = tf.get_variable(name="final_w", shape=[final_hiddens, 3])
             final_b = tf.get_variable(name="final_b", shape=[
                                       3], initializer=tf.constant_initializer(0.))
@@ -144,7 +145,7 @@ class Model(object):
             self.classes = tf.cast(
                 tf.argmax(logits, axis=1), dtype=tf.int32, name="classes")
             # 注意stop_gradient的使用，因为answer不是placeholder传进来的，所以要注明不对其计算梯度
-            self.loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(
+            self.loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
                 logits=logits, labels=tf.stop_gradient(self.answer)))
 
     def get_loss(self):
