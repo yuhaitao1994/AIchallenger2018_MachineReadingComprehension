@@ -26,13 +26,13 @@ class Model(object):
                                            initializer=tf.constant_initializer(0), trainable=False)
         # tf.data.iterator的get_next方法，返回dataset中下一个element的tensor对象，在sess.run中实现迭代
         """
-        c: context序列的每个词的id号的tensor(tf.int32)，长度应该是都取最大限制长度，空余的填充空值？(这里待定)
-        q: question序列的每个词的id号的tensor(tf.int32)
+        passage: passage序列的每个词的id号的tensor(tf.int32)，长度应该是都取最大限制长度，空余的填充空值？(这里待定)
+        question: question序列的每个词的id号的tensor(tf.int32)
         ch, qh, y1, y2: 本项目不需要，已经取消
         qa_id: question的id
         answer: 新添加的answer标签，(0/1/2)，shape初步定义为[batch_size]
         """
-        self.c, self.q, self.answer, self.qa_id = batch.get_next()
+        self.passage, self.question, self.answer, self.qa_id = batch.get_next()
         self.is_train = tf.get_variable(
             "is_train", shape=[], dtype=tf.bool, trainable=False)
 
@@ -41,8 +41,8 @@ class Model(object):
             word_mat, dtype=tf.float32), trainable=False)
 
         # tf.cast将tensor转换为bool类型，生成mask，有值部分用true，空值用false
-        self.c_mask = tf.cast(self.c, tf.bool)
-        self.q_mask = tf.cast(self.q, tf.bool)
+        self.c_mask = tf.cast(self.passage, tf.bool)
+        self.q_mask = tf.cast(self.question, tf.bool)
         # 求每个序列的真实长度，得到_len的tensor
         self.c_len = tf.reduce_sum(tf.cast(self.c_mask, tf.int32), axis=1)
         self.q_len = tf.reduce_sum(tf.cast(self.q_mask, tf.int32), axis=1)
@@ -52,8 +52,10 @@ class Model(object):
             # 求一个batch中序列最大长度，并按照最大长度对对tensor进行slice划分
             self.c_maxlen = tf.reduce_max(self.c_len)
             self.q_maxlen = tf.reduce_max(self.q_len)
-            self.c = tf.slice(self.c, [0, 0], [batch_size, self.c_maxlen])
-            self.q = tf.slice(self.q, [0, 0], [batch_size, self.q_maxlen])
+            self.c = tf.slice(self.passage, [0, 0], [
+                              batch_size, self.c_maxlen])
+            self.q = tf.slice(self.question, [0, 0], [
+                              batch_size, self.q_maxlen])
             self.c_mask = tf.slice(self.c_mask, [0, 0], [
                                    batch_size, self.c_maxlen])
             self.q_mask = tf.slice(self.q_mask, [0, 0], [
