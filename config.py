@@ -9,7 +9,7 @@ config.py：配置文件，程序运行入口
 import os
 import tensorflow as tf
 
-from prepro import prepro
+from PreProcess import prepro
 from main import train, test
 
 flags = tf.flags

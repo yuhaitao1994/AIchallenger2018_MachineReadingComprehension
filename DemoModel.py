@@ -11,7 +11,7 @@ import tensorflow as tf
 import os
 import numpy as np
 import random
-from func import cudnn_gru, native_gru, dot_attention, summ, ptr_net, dropout
+from nn_func import cudnn_gru, native_gru, dot_attention, summ, ptr_net, dropout
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"  # tensorflow的log显示级别
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"

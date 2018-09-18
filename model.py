@@ -8,7 +8,7 @@ model.py：基于R-Net的改进模型，将PtrNet改成分类器
 # -*- coding:utf-8 -*-
 
 import tensorflow as tf
-from func import cudnn_gru, native_gru, dot_attention, summ, dropout, ptr_net
+from nn_func import cudnn_gru, native_gru, dot_attention, summ, dropout, ptr_net
 
 
 class Model(object):
