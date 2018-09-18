@@ -153,6 +153,7 @@ def test(config):
         losses = []
         answer_dict = {}
         for step in tqdm(range(total // config.batch_size + 1)):
+            # 预测答案
             qa_id, answer = sess.run([model.qa_id, model.classes])
             answer_dict_ = {}
             for ids, ans in zip(qa_id, answer):
