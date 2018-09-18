@@ -3,6 +3,7 @@ import ujson as json
 import numpy as np
 from tqdm import tqdm
 import os
+import codecs
 
 from model import Model
 from util import *
@@ -65,7 +66,8 @@ def train(config):
             if global_step % config.checkpoint == 0:
                 sess.run(tf.assign(model.is_train,
                                    tf.constant(False, dtype=tf.bool)))
-            # 评估训练集
+
+                # 评估训练集
                 _, summ = evaluate_batch(
                     model, config.val_num_batches, train_eval_file, sess, "train_eval", handle, train_handle)
                 for s in summ:
@@ -100,20 +102,24 @@ def train(config):
 
 def evaluate_batch(model, num_batches, eval_file, sess, data_type, handle, str_handle):
     """
-    模型评估函数,需要重写
+    模型评估函数
     """
     answer_dict = {}  # 答案词典
+    truth_dict = {}  # 真实答案词典
     losses = []
     for _ in tqdm(range(1, num_batches + 1)):
-        qa_id, loss, answer = sess.run(
-            [model.qa_id, model.loss, model.classes], feed_dict={handle: str_handle})
+        qa_id, loss, truth, answer = sess.run(
+            [model.qa_id, model.loss, model.answer, model.classes], feed_dict={handle: str_handle})
         answer_dict_ = {}
-        for ids, ans in zip(qa_id, answer):
+        truth_dict_ = {}
+        for ids, tr, ans in zip(qa_id, truth, answer):
             answer_dict_[str(ids)] = ans
+            truth_dict_[str(ids)] = tr
         answer_dict.update(answer_dict_)
+        truth_dict.update(truth_dict_)
         losses.append(loss)
     loss = np.mean(losses)
-    metrics = evaluate(eval_file, answer_dict)
+    metrics = evaluate_acc(truth_dict, answer_dict)
     metrics["loss"] = loss
     loss_sum = tf.Summary(value=[tf.Summary.Value(
         tag="{}/loss".format(data_type), simple_value=metrics["loss"]), ])
@@ -129,7 +135,7 @@ def test(config):
     with open(config.id2vec_file, "r") as fh:
         id2vec = np.array(json.load(fh), dtype=np.float32)
     with open(config.test_eval_file, "r") as fh:
-        eval_file = json.load(fh)
+        test_eval_file = json.load(fh)
     with open(config.test_meta, "r") as fh:
         meta = json.load(fh)
 
@@ -161,4 +167,14 @@ def test(config):
             answer_dict.update(answer_dict_)
             losses.append(loss)
         loss = np.mean(losses)
-        # 这里还要加一个写文件的操作
+        # 将结果写文件的操作，不用考虑问题顺序
+        if len(answer_dict) != len(test_eval_file):
+            print("data number not match")
+        predictions = []
+        for key, value in answer_dict.items():
+            prediction_answer = u''.join(test_eval_file[key][value])
+            predictions.append(str(key) + '\t' + prediction_answer)
+        outputs = u'\n'.join(predictions)
+        with codecs.open("prediction.txt", 'w', encoding='utf-8') as f:
+            f.write(outputs)
+        print("done!")

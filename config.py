@@ -15,12 +15,11 @@ dev_file = os.path.join(home, "data", "AIchallenger",
                         "ai_challenger_oqmrc_validationset")
 test_file = os.path.join(home, "data", "AIchallenger",
                          "ai_challenger_oqmrc_testa.json")
-glove_word_file = os.path.join(home, "data", "glove", "glove.840B.300d.txt")
 
 target_dir = "data"
 log_dir = "log/event"
 save_dir = "log/model"
-answer_dir = "log/answer"
+prediction_dir = "log/prediction"
 train_record_file = os.path.join(target_dir, "train.tfrecords")
 dev_record_file = os.path.join(target_dir, "dev.tfrecords")
 test_record_file = os.path.join(target_dir, "test.tfrecords")
@@ -31,7 +30,7 @@ test_eval = os.path.join(target_dir, "test_eval.json")
 dev_meta = os.path.join(target_dir, "dev_meta.json")
 test_meta = os.path.join(target_dir, "test_meta.json")
 word2idx_file = os.path.join(target_dir, "word2idx.json")  # 词->id号
-answer_file = os.path.join(answer_dir, "answer.json")
+prediction_file = os.path.join(prediction_dir, "predictions.txt")
 
 if not os.path.exists(target_dir):
     os.makedirs(target_dir)

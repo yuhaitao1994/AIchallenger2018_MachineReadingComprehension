@@ -69,7 +69,7 @@ def get_dataset(record_file, parser, config):
     return dataset
 
 
-def evaluate(eval_file, answer_dict):
+def evaluate_acc(truth_dict, answer_dict):
     """
     计算准确率，还可以设计返回正确问题和错误问题列表
     """
@@ -78,7 +78,7 @@ def evaluate(eval_file, answer_dict):
     wrong = 0
     for key, value in answer_dict.items():
         total += 1
-        ground_truths = eval_file[key]["answers"]
+        ground_truths = truth_dict[key]
         prediction = value
         if prediction == ground_truths:
             right += 1

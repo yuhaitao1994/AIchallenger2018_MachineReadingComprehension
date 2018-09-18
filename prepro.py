@@ -156,6 +156,8 @@ def build_features(config, examples, data_type, out_file, word2idx_dict, is_test
 
         for i, token in enumerate(example["passage_tokens"]):
             passage_idxs[i] = word2idx_dict[token]
+        for i, token in enumerate(example["question_tokens"]):
+            question_idxs[i] = word2idx_dict[token]
 
         # context_ids存储的是一个context中每个词在词库中的id号
         record = tf.train.Example(features=tf.train.Features(feature={
@@ -187,11 +189,6 @@ def prepro(config):
         config.dev_file, "dev", word_counter, char_counter)
     test_examples, test_eval = process_file(
         config.test_file, "test", word_counter, char_counter)
-
-    word_emb_file = config.fasttext_file if config.fasttext else config.glove_word_file
-    char_emb_file = config.glove_char_file if config.pretrained_char else None
-    char_emb_size = config.glove_char_size if config.pretrained_char else None
-    char_emb_dim = config.glove_dim if config.pretrained_char else config.char_dim
 
     word2idx_dict = None
     if os.path.isfile(config.word2idx_file):
