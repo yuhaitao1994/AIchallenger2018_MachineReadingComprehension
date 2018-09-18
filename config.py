@@ -1,3 +1,11 @@
+"""
+AI Challenger观点型问题阅读理解
+
+config.py：配置文件，程序运行入口
+
+@author: yuhaitao
+"""
+# -*- coding:utf-8 -*-
 import os
 import tensorflow as tf
 

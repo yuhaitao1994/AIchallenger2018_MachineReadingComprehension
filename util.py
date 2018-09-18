@@ -1,3 +1,11 @@
+"""
+AI Challenger观点型问题阅读理解
+
+util.py：一些工具
+
+@author: yuhaitao
+"""
+# -*- coding:utf-8 -*-
 import tensorflow as tf
 import numpy as np
 import re

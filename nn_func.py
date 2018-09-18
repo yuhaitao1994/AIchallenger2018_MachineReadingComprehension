@@ -1,3 +1,11 @@
+"""
+AI Challenger观点型问题阅读理解
+
+nn_func.py：神经网络模型的组件
+
+@author: yuhaitao
+"""
+# -*- coding:utf-8 -*-
 import tensorflow as tf
 
 INF = 1e30

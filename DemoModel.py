@@ -1,7 +1,7 @@
 """
 AI Challenger观点型问题阅读理解
 
-inference.py：模型测试代码
+DemoModel.py：模型演示代码，测试模型能否跑通
 
 @author: yuhaitao
 """
@@ -16,7 +16,6 @@ from func import cudnn_gru, native_gru, dot_attention, summ, ptr_net, dropout
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"  # tensorflow的log显示级别
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
-# Must be consistant with training
 hidden = 75
 use_cudnn = False
 batch_size = 2
@@ -25,9 +24,7 @@ keep_prob = 0.7
 grad_clip = 5.0
 len_limit = 15
 
-class InfModel(object):
-    # Used to zero elements in the probability matrix that correspond to answer
-    # spans that are longer than the number of tokens specified here.
+class DemoModel(object):
 
     def __init__(self, word_mat, trainable=True, opt=True):
         # 注意，placeholder是数据传输的入口，不能在计算图中重新赋值
@@ -258,7 +255,7 @@ def main(_):
 
     print("Building model...")
     word_mat = np.array(id2vec)
-    model = InfModel(word_mat)
+    model = DemoModel(word_mat)
 
     sess_config = tf.ConfigProto(allow_soft_placement=True)
     sess_config.gpu_options.per_process_gpu_memory_fraction = 0.9

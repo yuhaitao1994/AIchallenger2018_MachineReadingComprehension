@@ -1,3 +1,11 @@
+"""
+AI Challenger观点型问题阅读理解
+
+PreProcess.py：数据预处理代码
+
+@author: haomaojie
+"""
+# -*- coding:utf-8 -*-
 import tensorflow as tf
 import random
 from tqdm import tqdm  # 进度条

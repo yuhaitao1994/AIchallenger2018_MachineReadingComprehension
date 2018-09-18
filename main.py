@@ -1,3 +1,11 @@
+"""
+AI Challenger观点型问题阅读理解
+
+main.py：train and test
+
+@author: yuhaitao
+"""
+# -*- coding:utf-8 -*-
 import tensorflow as tf
 import ujson as json
 import numpy as np
