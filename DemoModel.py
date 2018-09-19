@@ -19,7 +19,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 hidden = 75
 use_cudnn = False
 batch_size = 2
-learning_rate = 0.001
+learning_rate = 0.00001
 keep_prob = 0.7
 grad_clip = 5.0
 len_limit = 15
@@ -110,9 +110,9 @@ class DemoModel(object):
             final_gru = tf.contrib.rnn.GRUCell(final_hiddens)
             _, final_state = tf.nn.dynamic_rnn(
                 final_gru, match, initial_state=init, dtype=tf.float32)
-            final_w = tf.get_variable(name="final_w", shape=[final_hiddens, 3])
+            final_w = tf.get_variable(name="final_w", shape=[final_hiddens, 2])
             final_b = tf.get_variable(name="final_b", shape=[
-                                      3], initializer=tf.constant_initializer(0.))
+                                      2], initializer=tf.constant_initializer(0.))
             logits = tf.matmul(final_state, final_w)
             logits = tf.nn.bias_add(logits, final_b)  # logits:[batch_size, 3]
 
@@ -207,6 +207,42 @@ def main(_):
             "qa_id":6}
     ]
 
+    train_2_examples = [
+        {
+            "passage": ['苹果'],
+            "question": ['苹果'],
+            "answer":0,
+            "qa_id":7},
+        {
+            "passage": ['梨'],
+            "question": ['西瓜'],
+            "answer":1,
+            "qa_id":8},
+        {
+            "passage": ['葡萄', '香蕉'],
+            "question": ['葡萄', '香蕉'],
+            "answer":0,
+            "qa_id":9},
+        {
+            "passage": ['西瓜', '橘子'],
+            "question": ['甜的'],
+            "answer":1,
+            "qa_id":10},
+    ]
+
+    dev_2_examples = [
+        {
+            "passage": ['橘子'],
+            "question": ['苹果'],
+            "answer":1,
+            "qa_id":11},
+        {
+            "passage": ['梨', '西瓜'],
+            "question": ['梨', '西瓜'],
+            "answer":0,
+            "qa_id":12},
+    ]
+
     word2idx_dict = {"null":0,"苹果":1,"梨":2,"西瓜":3,"葡萄":4,"香蕉":5,"橘子":6,"甜的":7,"酸的":8,"硬的":9,\
         "软的":10,"大的":11,"圆的":12,"好吃的":13,"是":14,"也是":15,"它":16,"和":17,"吗":18}
     """
@@ -266,7 +302,7 @@ def main(_):
         sess.run(tf.assign(model.learning_rate,
                            tf.constant(learning_rate, dtype=tf.float32)))
 
-        dev_p, dev_q, dev_a, dev_id = get_bacth(dev_examples, word2idx_dict, batch_size)
+        dev_p, dev_q, dev_a, dev_id = get_bacth(dev_2_examples, word2idx_dict, batch_size)
         
         def get_acc(outputs, targets):
             t = 0
@@ -278,7 +314,7 @@ def main(_):
         for i in range(10000):
             global_step = sess.run(model.global_step) + 1
             random.shuffle(train_examples)
-            train_p, train_q, train_a, train_id = get_bacth(train_examples, word2idx_dict, batch_size)
+            train_p, train_q, train_a, train_id = get_bacth(train_2_examples, word2idx_dict, batch_size)
             # train
             feed = {model.passage: train_p, model.question: train_q, model.answer: train_a, model.qa_id: train_id, model.is_train:True}
             train_loss, train_op, t_classes, t_id = sess.run([model.loss, model.train_op, model.classes, model.qa_id], feed_dict=feed)

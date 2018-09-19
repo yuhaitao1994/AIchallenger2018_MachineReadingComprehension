@@ -63,6 +63,8 @@ def train(config):
         sess.run(tf.assign(model.learning_rate,
                            tf.constant(lr, dtype=tf.float32)))
 
+        best_dev_acc = 0.0  # 定义一个最佳验证准确率，只有当准确率高于它才保存模型
+
         for _ in tqdm(range(1, config.num_steps + 1)):
             global_step = sess.run(model.global_step) + 1
             loss, train_op = sess.run([model.loss, model.train_op], feed_dict={
@@ -86,6 +88,9 @@ def train(config):
                     model, dev_total // config.batch_size + 1, dev_eval_file, sess, "dev", handle, dev_handle)
                 sess.run(tf.assign(model.is_train,
                                    tf.constant(True, dtype=tf.bool)))
+                for s in summ:
+                    writer.add_summary(s, global_step)
+                writer.flush()  # 将事件文件刷新到磁盘
 
                 # 学习率衰减的策略
                 dev_loss = metrics["loss"]
@@ -100,12 +105,13 @@ def train(config):
                     patience = 0
                 sess.run(tf.assign(model.learning_rate,
                                    tf.constant(lr, dtype=tf.float32)))
-                for s in summ:
-                    writer.add_summary(s, global_step)
-                writer.flush()  # 将事件文件刷新到磁盘
-                filename = os.path.join(
-                    config.save_dir, "model_{}.ckpt".format(global_step))
-                saver.save(sess, filename)
+
+                # 保存模型的逻辑
+                if metrics["accuracy"] > best_dev_acc:
+                    best_dev_acc = metrics["accuracy"]
+                    filename = os.path.join(
+                        config.save_dir, "model_{}_devAcc_{:.4f}.ckpt".format(global_step, best_dev_acc))
+                    saver.save(sess, filename)
 
 
 def evaluate_batch(model, num_batches, eval_file, sess, data_type, handle, str_handle):
