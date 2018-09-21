@@ -26,9 +26,9 @@ def get_record_parser(config):
                                            })
         # tf.decode_raw: 将字符串的字节重新解释为数字向量
         passage_idxs = tf.reshape(tf.decode_raw(
-            features["context_idxs"], tf.int32), [para_limit])
+            features["passage_idxs"], tf.int32), [para_limit])
         question_idxs = tf.reshape(tf.decode_raw(
-            features["ques_idxs"], tf.int32), [ques_limit])
+            features["question_idxs"], tf.int32), [ques_limit])
         answer = features["answer"]
         qa_id = features["id"]
         return passage_idxs, question_idxs, answer, qa_id

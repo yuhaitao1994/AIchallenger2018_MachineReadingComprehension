@@ -7,7 +7,7 @@ main.py：train and test
 """
 # -*- coding:utf-8 -*-
 import tensorflow as tf
-import ujson as json
+import json as json
 import numpy as np
 from tqdm import tqdm
 import os
@@ -27,10 +27,8 @@ def train(config):
         train_eval_file = json.load(fh)
     with open(config.dev_eval_file, "r") as fh:
         dev_eval_file = json.load(fh)
-    with open(config.dev_meta, "r") as fh:
-        meta = json.load(fh)
 
-    dev_total = meta["total"]  # 测试集数据量
+    dev_total = 29968  # 验证集数据量
 
     print("Building model...")
     parser = get_record_parser(config)
@@ -54,7 +52,7 @@ def train(config):
     lr = config.init_learning_rate
 
     with tf.Session(config=sess_config) as sess:
-        writer = tf.summary.FileWriter(config.log_dir)
+        writer = tf.summary.FileWriter(config.log_dir, sess.graph)  # 存储计算图
         sess.run(tf.global_variables_initializer())
         saver = tf.train.Saver()
         train_handle = sess.run(train_iterator.string_handle())
@@ -64,8 +62,9 @@ def train(config):
                            tf.constant(lr, dtype=tf.float32)))
 
         best_dev_acc = 0.0  # 定义一个最佳验证准确率，只有当准确率高于它才保存模型
+        print("Training ...")
 
-        for _ in tqdm(range(1, config.num_steps + 1)):
+        for go in tqdm(range(1, config.num_steps + 1)):
             global_step = sess.run(model.global_step) + 1
             loss, train_op = sess.run([model.loss, model.train_op], feed_dict={
                                       handle: train_handle})
@@ -73,7 +72,8 @@ def train(config):
                 loss_sum = tf.Summary(value=[tf.Summary.Value(
                     tag="model/loss", simple_value=loss), ])
                 writer.add_summary(loss_sum, global_step)
-            if global_step % config.checkpoint == 0:
+
+            if global_step % config.checkpoint == 0:  # 验证acc，并保存模型
                 sess.run(tf.assign(model.is_train,
                                    tf.constant(False, dtype=tf.bool)))
 
@@ -110,7 +110,7 @@ def train(config):
                 if metrics["accuracy"] > best_dev_acc:
                     best_dev_acc = metrics["accuracy"]
                     filename = os.path.join(
-                        config.save_dir, "model_{}_devAcc_{:.4f}.ckpt".format(global_step, best_dev_acc))
+                        config.save_dir, "model_{}_devAcc_{:.6f}.ckpt".format(global_step, best_dev_acc))
                     saver.save(sess, filename)
 
 
@@ -150,10 +150,8 @@ def test(config):
         id2vec = np.array(json.load(fh), dtype=np.float32)
     with open(config.test_eval_file, "r") as fh:
         test_eval_file = json.load(fh)
-    with open(config.test_meta, "r") as fh:
-        meta = json.load(fh)
 
-    total = meta["total"]
+    total = 10000
 
     print("Loading model...")
     test_batch = get_dataset(config.test_record_file, get_record_parser(
@@ -170,7 +168,6 @@ def test(config):
         saver = tf.train.Saver()
         saver.restore(sess, tf.train.latest_checkpoint(config.save_dir))
         sess.run(tf.assign(model.is_train, tf.constant(False, dtype=tf.bool)))
-        losses = []
         answer_dict = {}
         for step in tqdm(range(total // config.batch_size + 1)):
             # 预测答案
@@ -179,16 +176,14 @@ def test(config):
             for ids, ans in zip(qa_id, answer):
                 answer_dict_[str(ids)] = ans
             answer_dict.update(answer_dict_)
-            losses.append(loss)
-        loss = np.mean(losses)
         # 将结果写文件的操作，不用考虑问题顺序
         if len(answer_dict) != len(test_eval_file):
             print("data number not match")
         predictions = []
         for key, value in answer_dict.items():
-            prediction_answer = u''.join(test_eval_file[key][value])
-            predictions.append(str(key) + '\t' + prediction_answer)
+            prediction_answer = test_eval_file[str(key)][value]
+            predictions.append(str(key) + '\t' + str(prediction_answer))
         outputs = u'\n'.join(predictions)
-        with codecs.open("prediction.txt", 'w', encoding='utf-8') as f:
+        with codecs.open(config.prediction_file, 'w', encoding='utf-8') as f:
             f.write(outputs)
         print("done!")

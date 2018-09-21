@@ -113,15 +113,15 @@ class DemoModel(object):
             final_w = tf.get_variable(name="final_w", shape=[final_hiddens, 2])
             final_b = tf.get_variable(name="final_b", shape=[
                                       2], initializer=tf.constant_initializer(0.))
-            logits = tf.matmul(final_state, final_w)
-            logits = tf.nn.bias_add(logits, final_b)  # logits:[batch_size, 3]
+            self.logits = tf.matmul(final_state, final_w)
+            self.logits = tf.nn.bias_add(self.logits, final_b)  # logits:[batch_size, 3]
 
         with tf.variable_scope("softmax_and_loss"):
-            final_softmax = tf.nn.softmax(logits)
+            final_softmax = tf.nn.softmax(self.logits)
             self.classes = tf.cast(
-                tf.argmax(logits, axis=1), dtype=tf.int32, name="classes")
+                tf.argmax(final_softmax, axis=1), dtype=tf.int32, name="classes")
             self.loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
-                logits=logits, labels=tf.stop_gradient(self.answer)))
+                logits=self.logits, labels=tf.stop_gradient(self.answer)))
 
     def get_loss(self):
         return self.loss
