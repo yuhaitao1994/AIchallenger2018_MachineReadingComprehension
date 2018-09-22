@@ -162,7 +162,8 @@ def test(config):
     sess_config = tf.ConfigProto(allow_soft_placement=True)
     sess_config.gpu_options.per_process_gpu_memory_fraction = 0.9
     sess_config.gpu_options.allow_growth = True
-
+    
+    print("testing ...")
     with tf.Session(config=sess_config) as sess:
         sess.run(tf.global_variables_initializer())
         saver = tf.train.Saver()
