@@ -68,8 +68,13 @@ class Model(object):
         if trainable:
             self.learning_rate = tf.get_variable(
                 "learning_rate", shape=[], dtype=tf.float32, trainable=False)
-            self.opt = tf.train.AdadeltaOptimizer(
-                learning_rate=self.learning_rate, epsilon=1e-6)
+            if self.config.optimizer == "Adadelta":
+                self.opt = tf.train.AdadeltaOptimizer(
+                    learning_rate=self.learning_rate, epsilon=1e-6)
+            elif self.config.optimizer == "SGD":
+                self.opt = tf.train.GradientDescentOptimizer(
+                    learning_rate=self.learning_rate)
+
             grads = self.opt.compute_gradients(self.loss)
             gradients, variables = zip(*grads)
             capped_grads, _ = tf.clip_by_global_norm(

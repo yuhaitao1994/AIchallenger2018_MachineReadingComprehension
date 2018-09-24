@@ -12,6 +12,7 @@ import numpy as np
 from tqdm import tqdm
 import os
 import codecs
+import time
 
 from model import Model
 from util import *
@@ -30,6 +31,20 @@ def train(config):
 
     dev_total = 29968  # 验证集数据量
 
+    # 不同参数的训练在不同的文件夹下存储
+    log_dir = config.log_dir + "_ba:" + \
+        str(config.batch_size) + "_hi:" + \
+        str(config.hidden) + "_op:" + config.optimizer + \
+        "_lr:" + str(config.init_learning_rate)
+    save_dir = config.save_dir + "_ba:" + \
+        str(config.batch_size) + "_hi:" + \
+        str(config.hidden) + "_op:" + config.optimizer + \
+        "_lr:" + str(config.init_learning_rate)
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+
     print("Building model...")
     parser = get_record_parser(config)
     train_dataset = get_batch_dataset(config.train_record_file, parser, config)
@@ -45,6 +60,7 @@ def train(config):
     model = Model(config, iterator, id2vec)
 
     sess_config = tf.ConfigProto(allow_soft_placement=True)
+    sess_config.gpu_options.per_process_gpu_memory_fraction = 0.9
     sess_config.gpu_options.allow_growth = True
 
     loss_save = 100.0
@@ -52,7 +68,7 @@ def train(config):
     lr = config.init_learning_rate
 
     with tf.Session(config=sess_config) as sess:
-        writer = tf.summary.FileWriter(config.log_dir, sess.graph)  # 存储计算图
+        writer = tf.summary.FileWriter(log_dir, sess.graph)  # 存储计算图
         sess.run(tf.global_variables_initializer())
         saver = tf.train.Saver()
         train_handle = sess.run(train_iterator.string_handle())
@@ -63,15 +79,17 @@ def train(config):
 
         best_dev_acc = 0.0  # 定义一个最佳验证准确率，只有当准确率高于它才保存模型
         print("Training ...")
-
         for go in tqdm(range(1, config.num_steps + 1)):
             global_step = sess.run(model.global_step) + 1
             loss, train_op = sess.run([model.loss, model.train_op], feed_dict={
                                       handle: train_handle})
-            if global_step % config.period == 0:  # 每隔一段步数就记录一次train_loss
+            if global_step % config.period == 0:  # 每隔一段步数就记录一次train_loss和learning_rate
                 loss_sum = tf.Summary(value=[tf.Summary.Value(
                     tag="model/loss", simple_value=loss), ])
                 writer.add_summary(loss_sum, global_step)
+                lr_sum = tf.Summary(value=[tf.Summary.Value(
+                    tag="model/learning_rate", simple_value=sess.run(model.learning_rate)), ])
+                writer.add_summary(lr_sum, global_step)
 
             if global_step % config.checkpoint == 0:  # 验证acc，并保存模型
                 sess.run(tf.assign(model.is_train,
@@ -110,8 +128,9 @@ def train(config):
                 if metrics["accuracy"] > best_dev_acc:
                     best_dev_acc = metrics["accuracy"]
                     filename = os.path.join(
-                        config.save_dir, "model_{}_devAcc_{:.6f}.ckpt".format(global_step, best_dev_acc))
+                        save_dir, "model_{}_devAcc_{:.6f}.ckpt".format(global_step, best_dev_acc))
                     saver.save(sess, filename)
+    print("finished!")
 
 
 def evaluate_batch(model, num_batches, eval_file, sess, data_type, handle, str_handle):
@@ -152,6 +171,16 @@ def test(config):
         test_eval_file = json.load(fh)
 
     total = 10000
+    # 读取模型的路径和预测存储的路径
+    save_dir = config.save_dir + "_" + \
+        str(config.batch_size) + "_" + \
+        str(config.hidden) + "_lr:" + str(config.init_learning_rate)
+    if not os.path.exists(save_dir):
+        print("no save!")
+        return
+    predic_time = time.strftime("%Y-%m-%d_%H:%M:%S ", time.localtime())
+    prediction_file = os.path.join(
+        config.prediction_dir, (predic_time + "_predictions.txt"))
 
     print("Loading model...")
     test_batch = get_dataset(config.test_record_file, get_record_parser(
@@ -162,12 +191,12 @@ def test(config):
     sess_config = tf.ConfigProto(allow_soft_placement=True)
     sess_config.gpu_options.per_process_gpu_memory_fraction = 0.9
     sess_config.gpu_options.allow_growth = True
-    
+
     print("testing ...")
     with tf.Session(config=sess_config) as sess:
         sess.run(tf.global_variables_initializer())
         saver = tf.train.Saver()
-        saver.restore(sess, tf.train.latest_checkpoint(config.save_dir))
+        saver.restore(sess, tf.train.latest_checkpoint(save_dir))
         sess.run(tf.assign(model.is_train, tf.constant(False, dtype=tf.bool)))
         answer_dict = {}
         for step in tqdm(range(total // config.batch_size + 1)):
@@ -185,6 +214,6 @@ def test(config):
             prediction_answer = test_eval_file[str(key)][value]
             predictions.append(str(key) + '\t' + str(prediction_answer))
         outputs = u'\n'.join(predictions)
-        with codecs.open(config.prediction_file, 'w', encoding='utf-8') as f:
+        with codecs.open(prediction_file, 'w', encoding='utf-8') as f:
             f.write(outputs)
         print("done!")

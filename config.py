@@ -35,7 +35,6 @@ word2id_file = os.path.join(target_dir, "word2id.json")  # 词->id号
 train_eval = os.path.join(target_dir, "train_eval.json")
 dev_eval = os.path.join(target_dir, "dev_eval.json")
 test_eval = os.path.join(target_dir, "test_eval.json")
-prediction_file = os.path.join(prediction_dir, "predictions.txt")
 
 if not os.path.exists(target_dir):
     os.makedirs(target_dir)
@@ -52,6 +51,7 @@ flags.DEFINE_string("gpu", "0", "0/1")
 flags.DEFINE_string("target_dir", target_dir, "")
 flags.DEFINE_string("log_dir", log_dir, "")
 flags.DEFINE_string("save_dir", save_dir, "")
+flags.DEFINE_string("prediction_dir", prediction_dir, "")
 flags.DEFINE_string("train_file", train_file, "")
 flags.DEFINE_string("dev_file", dev_file, "")
 flags.DEFINE_string("test_file", test_file, "")
@@ -64,7 +64,6 @@ flags.DEFINE_string("dev_eval_file", dev_eval, "")
 flags.DEFINE_string("test_eval_file", test_eval, "")
 flags.DEFINE_string("word2id_file", word2id_file, "")
 flags.DEFINE_string("id2vec_file", id2vec_file, "")
-flags.DEFINE_string("prediction_file", prediction_file, "")
 
 flags.DEFINE_integer("para_limit", 500, "Limit length for paragraph")
 flags.DEFINE_integer("ques_limit", 50, "Limit length for question")
@@ -78,9 +77,9 @@ flags.DEFINE_boolean("is_bucket", False, "Whether to use bucketing")
 flags.DEFINE_list("bucket_range", [40, 361, 40], "range of bucket")
 
 flags.DEFINE_integer("batch_size", 64, "Batch size")
-flags.DEFINE_integer("num_steps", 200000, "Number of steps")
+flags.DEFINE_integer("num_steps", 150000, "Number of steps")
 flags.DEFINE_integer("checkpoint", 1000, "checkpoint for evaluation")
-flags.DEFINE_integer("period", 100, "period to save batch loss")
+flags.DEFINE_integer("period", 500, "period to save batch loss")
 flags.DEFINE_integer("val_num_batches", 150, "Num of batches for evaluation")
 flags.DEFINE_float("init_learning_rate", 0.5,
                    "Initial learning rate for Adadelta")
@@ -88,6 +87,7 @@ flags.DEFINE_float("keep_prob", 0.7, "Keep prob in rnn")
 flags.DEFINE_float("grad_clip", 5.0, "Global Norm gradient clipping rate")
 flags.DEFINE_integer("hidden", 75, "Hidden size")
 flags.DEFINE_integer("patience", 3, "Patience for learning rate decay")
+flags.DEFINE_string("optimizer", "Adadelta", "Adadelta / SGD")
 
 
 def main(_):
