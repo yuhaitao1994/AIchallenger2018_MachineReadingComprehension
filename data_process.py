@@ -42,15 +42,21 @@ def de_word(data_path, out_path):
     分词
     '''
     start_time = time.time()
-    file_data = open(data_path).read().split('\n')
-    fileTrainSeg = []
-    for i in range(1, len(file_data)):
-        fileTrainSeg.append(
-            [' '.join(list(jieba.cut(file_data[i], cut_all=False)))])
-    with open(out_path, 'wb') as fW:
-        for i in range(len(fileTrainSeg)):
-            fW.write(fileTrainSeg[i][0].encode('utf-8'))
-    print('分词成功')
+    word = []
+    data_file = open(data_path).read().split('\n')
+    for i in range(len(data_file)):
+        result = []
+        seg_list = jieba.cut(data_file[i])
+        for w in seg_list:
+            result.append(w)
+        word.append(result)
+    print('分词完成')
+    with open(out_path, 'w+') as txt_write:
+        for i in range(len(word)):
+            s = str(word[i]).replace('[','').replace(']','')#去除[],这两行按数据不同，可以选择
+            s = s.replace("'",'').replace(',','') +'\n'   #去除单引号，逗号，每行末尾追加换行符
+            txt_write.write(s)
+    print('保存成功')
     end_time = time.time()
     print(end_time - start_time)
 
@@ -75,7 +81,7 @@ def transfer(model_path):
     word2id_dic = {}
     init_0 = [0.0 for i in range(100)]
     id2vec_dic = [init_0]
-    for i in range(397966):  # 397966
+    for i in range(320852):
         id = i + 1
         word2id_dic[model.vocab[i]] = id
         id2vec_dic.append(model[model.vocab[i]].tolist())
