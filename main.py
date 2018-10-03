@@ -32,14 +32,8 @@ def train(config):
     dev_total = 29968  # 验证集数据量
 
     # 不同参数的训练在不同的文件夹下存储
-    log_dir = config.log_dir + "_ba:" + \
-        str(config.batch_size) + "_hi:" + \
-        str(config.hidden) + "_op:" + config.optimizer + \
-        "_lr:" + str(config.init_learning_rate)
-    save_dir = config.save_dir + "_ba:" + \
-        str(config.batch_size) + "_hi:" + \
-        str(config.hidden) + "_op:" + config.optimizer + \
-        "_lr:" + str(config.init_learning_rate)
+    log_dir = config.log_dir + config.experiment
+    save_dir = config.save_dir + config.experiment
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
     if not os.path.exists(save_dir):
@@ -172,9 +166,7 @@ def test(config):
 
     total = 10000
     # 读取模型的路径和预测存储的路径
-    save_dir = config.save_dir + "_" + \
-        str(config.batch_size) + "_" + \
-        str(config.hidden) + "_lr:" + str(config.init_learning_rate)
+    save_dir = config.save_dir + config.experiment
     if not os.path.exists(save_dir):
         print("no save!")
         return

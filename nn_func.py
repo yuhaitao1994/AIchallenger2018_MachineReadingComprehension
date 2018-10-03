@@ -215,7 +215,7 @@ def dot_attention(inputs, memory, mask, hidden, keep_prob=1.0, is_train=None, sc
             # 三维矩阵相乘，结果的shape是[batch_size, c_maxlen, q_maxlen]
             outputs = tf.matmul(inputs_, tf.transpose(
                 memory_, [0, 2, 1])) / (hidden ** 0.5)
-            # 将mask平铺成与outputs相同的形状
+            # 将mask平铺成与outputs相同的形状，这里考虑，改进成input和memory都需要mask
             mask = tf.tile(tf.expand_dims(mask, axis=1), [1, JX, 1])
             logits = tf.nn.softmax(softmax_mask(outputs, mask))
             outputs = tf.matmul(logits, memory)

@@ -53,16 +53,19 @@ def de_word(data_path, out_path):
     print('分词完成')
     with open(out_path, 'w+') as txt_write:
         for i in range(len(word)):
-            s = str(word[i]).replace('[','').replace(']','')#去除[],这两行按数据不同，可以选择
-            s = s.replace("'",'').replace(',','') +'\n'   #去除单引号，逗号，每行末尾追加换行符
+            s = str(word[i]).replace(
+                '[', '').replace(']', '')  # 去除[],这两行按数据不同，可以选择
+            s = s.replace("'", '').replace(',', '') + \
+                '\n'  # 去除单引号，逗号，每行末尾追加换行符
             txt_write.write(s)
     print('保存成功')
     end_time = time.time()
     print(end_time - start_time)
 
 
-def word_vec(file_txt, file_bin):
-    word2vec.word2vec(file_txt, file_bin, min_count=1, size=100, verbose=True)
+def word_vec(file_txt, file_bin, min_count, size):
+    word2vec.word2vec(file_txt, file_bin, min_count=min_count,
+                      size=size, verbose=True)
 
 
 def merge_csv(target_dir, output_file):
@@ -75,13 +78,13 @@ def merge_csv(target_dir, output_file):
 # 词转id，id转向量
 
 
-def transfer(model_path):
+def transfer(model_path, embedding_size):
     start_time = time.time()
     model = word2vec.load(model_path)
     word2id_dic = {}
-    init_0 = [0.0 for i in range(100)]
+    init_0 = [0.0 for i in range(embedding_size)]
     id2vec_dic = [init_0]
-    for i in range(320852):
+    for i in range(len(model.vocab)):
         id = i + 1
         word2id_dic[model.vocab[i]] = id
         id2vec_dic.append(model[model.vocab[i]].tolist())
@@ -255,9 +258,9 @@ def data_process(config, train_file, test_file, validation_file):
     de_word(os.path.join(target_dir, 'ori_data.csv'),
             os.path.join(target_dir, 'seg_list.txt'))
     word_vec(os.path.join(target_dir, 'seg_list.txt'),
-             os.path.join(target_dir, 'seg_listWord2Vec.bin'))
+             os.path.join(target_dir, 'seg_listWord2Vec.bin'), config.min_count, config.embedding_size)
     word2id_dic, id2vec_dic = transfer(
-        os.path.join(target_dir, 'seg_listWord2Vec.bin'))
+        os.path.join(target_dir, 'seg_listWord2Vec.bin'), config.embedding_size)
     save_json(config.word2id_file, word2id_dic, "word to id")
     save_json(config.id2vec_file, id2vec_dic, "id to vec")
     train_examples, train_id2alternatives = TrainningsetProcess(

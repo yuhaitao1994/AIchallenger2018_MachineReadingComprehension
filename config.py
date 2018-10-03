@@ -11,6 +11,7 @@ import tensorflow as tf
 
 from data_process import prepro
 from main import train, test
+from examine_dev import examine_dev
 
 flags = tf.flags
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -47,6 +48,7 @@ if not os.path.exists(prediction_dir):
 
 flags.DEFINE_string("mode", "train", "train/debug/test")
 flags.DEFINE_string("gpu", "0", "0/1")
+flags.DEFINE_string("experiment", "lalala", "每次存不同模型分不同的文件夹")
 
 flags.DEFINE_string("target_dir", target_dir, "")
 flags.DEFINE_string("log_dir", log_dir, "")
@@ -68,6 +70,8 @@ flags.DEFINE_string("id2vec_file", id2vec_file, "")
 flags.DEFINE_integer("para_limit", 500, "Limit length for paragraph")
 flags.DEFINE_integer("ques_limit", 50, "Limit length for question")
 flags.DEFINE_integer("word_count_limit", -1, "Min count for word")
+flags.DEFINE_integer("min_count", 1, "embedding 的最小出现次数")
+flags.DEFINE_integer("embedding_size", 300, "the dimension of vector")
 
 flags.DEFINE_integer("capacity", 15000, "Batch size of dataset shuffle")
 flags.DEFINE_integer("num_threads", 4, "Number of threads in input pipeline")
@@ -81,11 +85,11 @@ flags.DEFINE_integer("num_steps", 150000, "Number of steps")
 flags.DEFINE_integer("checkpoint", 1000, "checkpoint for evaluation")
 flags.DEFINE_integer("period", 500, "period to save batch loss")
 flags.DEFINE_integer("val_num_batches", 150, "Num of batches for evaluation")
-flags.DEFINE_float("init_learning_rate", 0.5,
+flags.DEFINE_float("init_learning_rate", 1.0,
                    "Initial learning rate for Adadelta")
 flags.DEFINE_float("keep_prob", 0.7, "Keep prob in rnn")
 flags.DEFINE_float("grad_clip", 5.0, "Global Norm gradient clipping rate")
-flags.DEFINE_integer("hidden", 75, "Hidden size")
+flags.DEFINE_integer("hidden", 60, "Hidden size")  # best:128
 flags.DEFINE_integer("patience", 3, "Patience for learning rate decay")
 flags.DEFINE_string("optimizer", "Adadelta", "Adadelta / SGD")
 
@@ -105,6 +109,8 @@ def main(_):
         train(config)
     elif config.mode == "test":
         test(config)
+    elif config.mode == "examine":
+        examine_dev(config)
     else:
         print("Unknown mode")
         exit(0)
