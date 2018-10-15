@@ -92,6 +92,7 @@ class DemoModel(object):
             rnn = gru(num_layers=1, num_units=d, batch_size=batch_size, input_size=qc_att.get_shape(
             ).as_list()[-1], keep_prob=keep_prob, is_train=self.is_train)
             att = rnn(qc_att, seq_len=self.c_len)
+            print(att.get_shape().as_list())
 
         with tf.variable_scope("match"):
             self_att = dot_attention(
@@ -100,10 +101,12 @@ class DemoModel(object):
             ).as_list()[-1], keep_prob=keep_prob, is_train=self.is_train)
             # match:[batch_size, c_maxlen, 6*hidden]
             match = rnn(self_att, seq_len=self.c_len)
+            print(match.get_shape().as_list())
 
         with tf.variable_scope("YesNo_classification"):
             init = summ(q[:, :, -2 * d:], d, mask=self.q_mask,
                         keep_prob=keep_prob, is_train=self.is_train)
+            print(init.get_shape().as_list())
             match = dropout(match, keep_prob=keep_prob,
                             is_train=self.is_train)
             final_hiddens = init.get_shape().as_list()[-1]

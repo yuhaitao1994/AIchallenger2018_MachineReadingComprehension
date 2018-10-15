@@ -29,10 +29,7 @@ def examine_dev(config):
 
     total = 29968
     # 读取模型的路径和预测存储的路径
-    save_dir = config.save_dir + "_ba:" + \
-        str(config.batch_size) + "_hi:" + \
-        str(config.hidden) + "_op:" + config.optimizer + \
-        "_lr:" + str(config.init_learning_rate)
+    save_dir = config.save_dir + config.experiment
     if not os.path.exists(save_dir):
         print("no save!")
         return

@@ -13,6 +13,7 @@ from tqdm import tqdm
 import os
 import codecs
 import time
+import math
 
 from model import Model
 from util import *
@@ -51,7 +52,12 @@ def train(config):
     train_iterator = train_dataset.make_one_shot_iterator()
     dev_iterator = dev_dataset.make_one_shot_iterator()
 
-    model = Model(config, iterator, id2vec)
+    # 选取模型
+    if config.model_name == "default":
+        model = Model(config, iterator, id2vec)
+    else:
+        print("model error")
+        return
 
     sess_config = tf.ConfigProto(allow_soft_placement=True)
     sess_config.gpu_options.per_process_gpu_memory_fraction = 0.9
@@ -104,17 +110,34 @@ def train(config):
                     writer.add_summary(s, global_step)
                 writer.flush()  # 将事件文件刷新到磁盘
 
-                # 学习率衰减的策略
-                dev_loss = metrics["loss"]
-                if dev_loss < loss_save:
-                    loss_save = dev_loss
-                    patience = 0
+                # 学习率衰减的策略1
+                # dev_loss = metrics["loss"]
+                # if dev_loss < loss_save:
+                #     loss_save = dev_loss
+                #     patience = 0
+                # else:
+                #     patience += 1
+                # if patience >= config.patience:
+                #     if config.optimizer == "Adam":
+                #         lr *= 0.9
+                #     else:
+                #         lr /= 2.0
+                #     loss_save = dev_loss
+                #     patience = 0
+
+                # 学习率衰减策略2
+                if global_step <= 16000:
+                    lr = config.init_learning_rate
+                elif global_step <= 100000:
+                    lr = config.init_learning_rate / \
+                        math.sqrt((global_step - 12000) / 4000)
+                elif global_dtep <= 150000:
+                    lr = config.init_learning_rate / \
+                        math.sqrt((global_step - 12000) / 3000)
                 else:
-                    patience += 1
-                if patience >= config.patience:
-                    lr /= 2.0
-                    loss_save = dev_loss
-                    patience = 0
+                    lr = config.init_learning_rate / \
+                        math.sqrt(global_step / 2000)
+
                 sess.run(tf.assign(model.learning_rate,
                                    tf.constant(lr, dtype=tf.float32)))
 
@@ -124,6 +147,7 @@ def train(config):
                     filename = os.path.join(
                         save_dir, "model_{}_devAcc_{:.6f}.ckpt".format(global_step, best_dev_acc))
                     saver.save(sess, filename)
+
     print("finished!")
 
 
@@ -178,7 +202,12 @@ def test(config):
     test_batch = get_dataset(config.test_record_file, get_record_parser(
         config), config).make_one_shot_iterator()
 
-    model = Model(config, test_batch, id2vec, trainable=False)
+    # 选取模型
+    if config.model_name == "default":
+        model = Model(config, test_batch, id2vec, trainable=False)
+    else:
+        print("model error")
+        return
 
     sess_config = tf.ConfigProto(allow_soft_placement=True)
     sess_config.gpu_options.per_process_gpu_memory_fraction = 0.9

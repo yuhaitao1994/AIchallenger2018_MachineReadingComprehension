@@ -119,30 +119,6 @@ class native_gru:
         return res
 
 
-class ptr_net:
-    def __init__(self, batch, hidden, keep_prob=1.0, is_train=None, scope="ptr_net"):
-        self.gru = tf.contrib.rnn.GRUCell(hidden)
-        self.batch = batch
-        self.scope = scope
-        self.keep_prob = keep_prob
-        self.is_train = is_train
-        self.dropout_mask = dropout(tf.ones(
-            [batch, hidden], dtype=tf.float32), keep_prob=keep_prob, is_train=is_train)
-
-    def __call__(self, init, match, d, mask):
-        with tf.variable_scope(self.scope):
-            d_match = dropout(match, keep_prob=self.keep_prob,
-                              is_train=self.is_train)
-            # inp:[batch_size, 6*hidden], logits1:[batch_size, c_maxlen]
-            inp, logits1 = pointer(d_match, init * self.dropout_mask, d, mask)
-            d_inp = dropout(inp, keep_prob=self.keep_prob,
-                            is_train=self.is_train)
-            _, state = self.gru(d_inp, init)  # (inputs,states)
-            tf.get_variable_scope().reuse_variables()
-            _, logits2 = pointer(d_match, state * self.dropout_mask, d, mask)
-            return logits1, logits2
-
-
 def dropout(args, keep_prob, is_train, mode="recurrent"):
     """
     dropout层,args初始是1.0
@@ -168,18 +144,6 @@ def softmax_mask(val, mask):
     return -INF * (1 - tf.cast(mask, tf.float32)) + val  # tf.cast:true转为1.0，false转为0.0
 
 
-def pointer(inputs, state, hidden, mask, scope="pointer"):
-    with tf.variable_scope(scope):
-        u = tf.concat([tf.tile(tf.expand_dims(state, axis=1), [
-            1, tf.shape(inputs)[1], 1]), inputs], axis=2)  # u:[batch_size, c_maxlen, 8*hidden]
-        s0 = tf.nn.tanh(dense(u, hidden, use_bias=False, scope="s0"))
-        s = dense(s0, 1, use_bias=False, scope="s")
-        s1 = softmax_mask(tf.squeeze(s, [2]), mask)
-        a = tf.expand_dims(tf.nn.softmax(s1), axis=2)
-        res = tf.reduce_sum(a * inputs, axis=1)
-        return res, s1
-
-
 def summ(memory, hidden, mask, keep_prob=1.0, is_train=None, scope="summ"):
     """
     对question进行最后一步的处理，可以看作是pooling吗
@@ -189,7 +153,7 @@ def summ(memory, hidden, mask, keep_prob=1.0, is_train=None, scope="summ"):
         s0 = tf.nn.tanh(dense(d_memory, hidden, scope="s0"))
         s = dense(s0, 1, use_bias=False, scope="s")
         # tf.squeeze把长度只有1的维度去掉
-        # s1:[batch_size, q_maxlen]
+        # s1:[batch_size, c_maxlen]
         s1 = softmax_mask(tf.squeeze(s, [2]), mask)
         a = tf.expand_dims(tf.nn.softmax(s1), axis=2)
         res = tf.reduce_sum(a * memory, axis=1)  # 逐元素相乘，shape跟随memory一致
@@ -230,6 +194,55 @@ def dot_attention(inputs, memory, mask, hidden, keep_prob=1.0, is_train=None, sc
             d_res = dropout(res, keep_prob=keep_prob, is_train=is_train)
             gate = tf.nn.sigmoid(dense(d_res, dim, use_bias=False))
             return res * gate  # 向量的逐元素相乘
+
+
+# 写一个谷歌论文中新的attention模块
+def multihead_attention(Q, K, V, mask, hidden, head_num=4, keep_prob=1.0, is_train=None, has_gate=True, scope="multihead_attention"):
+    """
+    Q : passage
+    K,V: question
+    mask: Q的mask
+    """
+    size = int(hidden / head_num)  # 每个attention的大小
+
+    with tf.variable_scope(scope):
+        d_Q = dropout(Q, keep_prob=keep_prob, is_train=is_train)
+        d_K = dropout(K, keep_prob=keep_prob, is_train=is_train)
+        JX = tf.shape(Q)[1]
+
+        with tf.variable_scope("attention"):
+            Q_ = tf.nn.relu(dense(d_Q, hidden, use_bias=False, scope="Q"))
+            K_ = tf.nn.relu(dense(d_K, hidden, use_bias=False, scope="K"))
+            V_ = tf.nn.relu(dense(V, hidden, use_bias=False, scope="V"))
+            Q_ = tf.reshape(Q_, (-1, tf.shape(Q_)[1], head_num, size))
+            K_ = tf.reshape(K_, (-1, tf.shape(K_)[1], head_num, size))
+            V_ = tf.reshape(V_, (-1, tf.shape(V_)[1], head_num, size))
+            Q_ = tf.transpose(Q_, [0, 2, 1, 3])
+            K_ = tf.transpose(K_, [0, 2, 1, 3])
+            V_ = tf.transpose(V_, [0, 2, 1, 3])
+            # scale:[batch_size, head_num, c_maxlen, q_maxlen]
+            scale = tf.matmul(Q_, K_, transpose_b=True) / tf.sqrt(float(size))
+            scale = tf.transpose(scale, [0, 3, 2, 1])
+            for _ in range(len(scale.shape) - 2):
+                mask = tf.expand_dims(mask, axis=2)
+            mask_scale = softmax_mask(scale, mask)
+            mask_scale = tf.transpose(scale, [0, 3, 2, 1])
+            logits = tf.nn.softmax(mask_scale)
+            outputs = tf.matmul(logits, V_)  # [b,h,c,s]
+            outputs = tf.transpose(outputs, [0, 2, 1, 3])
+            # [batch_size, c_maxlen, hidden]
+            outputs = tf.reshape(outputs, (-1, tf.shape(Q)[1], hidden))
+            # res连接
+            res = tf.concat([Q, outputs], axis=2)
+
+        if has_gate:
+            with tf.variable_scope("gate"):
+                dim = res.get_shape().as_list()[-1]
+                d_res = dropout(res, keep_prob=keep_prob, is_train=is_train)
+                gate = tf.nn.sigmoid(dense(d_res, dim, use_bias=False))
+                return res * gate
+        else:
+            return res
 
 
 def dense(inputs, hidden, use_bias=True, scope="dense"):

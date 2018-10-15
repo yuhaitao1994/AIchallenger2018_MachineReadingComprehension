@@ -17,7 +17,7 @@ import tensorflow as tf
 import numpy as np
 from tqdm import tqdm  # 进度条
 import os
-#import gensim
+import gensim
 
 
 def read_data(json_path, output_path, line_count):
@@ -93,6 +93,26 @@ def transfer(model_path, embedding_size):
     print(end_time - start_time)
     return word2id_dic, id2vec_dic
 
+
+def transfer_txt(model_path, embedding_size):
+    print("开始转换...")
+    start_time = time.time()
+    model = gensim.models.KeyedVectors.load_word2vec_format(
+        model_path, binary=False)
+    word_dic = model.wv.vocab
+    word2id_dic = {}
+    init_0 = [0.0 for i in range(embedding_size)]
+    id2vec_dic = [init_0]
+    id = 1
+    for i in word_dic:
+        word2id_dic[i] = id
+        id2vec_dic.append(model[i].tolist())
+        id += 1
+    end_time = time.time()
+    print('词转id，id转向量完成')
+    print(end_time - start_time)
+    return word2id_dic, id2vec_dic
+
 # 存入json文件
 
 
@@ -110,7 +130,7 @@ def save_json(output_path, dic_data, message=None):
 # 输入参数为词典的位置和训练集的位置
 
 
-def TrainningsetProcess(dic_url, dataset_url):
+def TrainningsetProcess(dic_url, dataset_url, passage_len_limit):
     res = []  # 最后返回的结果
     rule = re.compile(r'\|')
     id2alternatives = {}
@@ -229,8 +249,8 @@ def TrainningsetProcess(dic_url, dataset_url):
             if dataset_url.find('test') == -1:
                 answer_id = tmp.index(answer.strip())
             # 得到这一行映射后的结果，是dict类型的数据
-            if len(passage_id) > 500:
-                passage_id = passage_id[:500]
+            if len(passage_id) > passage_len_limit:
+                passage_id = passage_id[:passage_len_limit]
                 over_limit += 1
             this_line_res['passage'] = passage_id
             this_line_res['query'] = query_id
@@ -246,39 +266,45 @@ def TrainningsetProcess(dic_url, dataset_url):
         return res, id2alternatives
 
 
-def data_process(config, train_file, test_file, validation_file):
+def data_process(config):
     target_dir = config.target_dir
-    read_data(train_file, os.path.join(
+    # 这里如果使用自己训练好的词向量就可以注释掉
+    '''
+    read_data(config.train_file, os.path.join(
         target_dir, 'train_oridata.csv'), 250000)  # 250000
-    read_data(test_file, os.path.join(
+    read_data(config.test_file, os.path.join(
         target_dir, 'test_oridata.csv'), 10000)  # 10000
-    read_data(validation_file, os.path.join(
+    read_data(config.dev_file, os.path.join(
         target_dir, 'validation_oridata.csv'), 30000)  # 30000
     merge_csv(target_dir, os.path.join(target_dir, 'ori_data.csv'))
     de_word(os.path.join(target_dir, 'ori_data.csv'),
             os.path.join(target_dir, 'seg_list.txt'))
     word_vec(os.path.join(target_dir, 'seg_list.txt'),
              os.path.join(target_dir, 'seg_listWord2Vec.bin'), config.min_count, config.embedding_size)
+    # 如果是用外部词向量，从这里开始
+    # word2id_dic, id2vec_dic = transfer_txt(
+    #     os.path.join(target_dir, 'baidu_300_wc+ng_sgns.baidubaike.bigram-char.txt'), config.embedding_size)
     word2id_dic, id2vec_dic = transfer(
         os.path.join(target_dir, 'seg_listWord2Vec.bin'), config.embedding_size)
     save_json(config.word2id_file, word2id_dic, "word to id")
     save_json(config.id2vec_file, id2vec_dic, "id to vec")
+    '''
     train_examples, train_id2alternatives = TrainningsetProcess(
-        config.word2id_file, train_file)
+        config.word2id_file, config.train_file, config.para_limit)
     test_examples, test_id2alternatives = TrainningsetProcess(
-        config.word2id_file, test_file)
+        config.word2id_file, config.test_file, config.para_limit)
     validation_examples, validation_id2alternatives = TrainningsetProcess(
-        config.word2id_file, validation_file)
+        config.word2id_file, config.dev_file, config.para_limit)
     save_json(config.train_eval_file, train_id2alternatives,
               message='保存train每条数据的alternatives')
     save_json(config.test_eval_file, test_id2alternatives,
               message='保存test每条数据的alternatives')
     save_json(config.dev_eval_file, validation_id2alternatives,
               message='保存validation每条数据的alternatives')
-    return train_examples, test_examples, validation_examples, word2id_dic
+    return train_examples, test_examples, validation_examples
 
 
-def build_features(config, examples, data_type, out_file, word2idx_dict, is_test=False):
+def build_features(config, examples, data_type, out_file, is_test=False):
     """
     将数据读入TFrecords
     """
@@ -307,7 +333,6 @@ def build_features(config, examples, data_type, out_file, word2idx_dict, is_test
                 question_idxs[i] = token
         # print(passage_idxs)
         # print(example["passage"])
-        # context_ids存储的是一个context中每个词在词库中的id号
         if not is_test:
             record = tf.train.Example(features=tf.train.Features(feature={
                                       "passage_idxs": tf.train.Feature(bytes_list=tf.train.BytesList(value=[passage_idxs.tostring()])),
@@ -332,8 +357,7 @@ def prepro(config):
     """
     数据预处理函数
     """
-    train_examples, test_examples, dev_examples, word2id_dict = data_process(
-        config, config.train_file, config.test_file, config.dev_file)
+    train_examples, test_examples, dev_examples = data_process(config)
     '''
     print(train_examples)
     print(test_examples)
@@ -343,11 +367,9 @@ def prepro(config):
     # train: 249778, test: 10000, dev: 29968
     # train: 439, test: 18, dev: 48
 
-    build_features(config, train_examples, "train",
-                   config.train_record_file, word2id_dict)
-    build_features(config, dev_examples, "dev",
-                   config.dev_record_file, word2id_dict)
+    build_features(config, train_examples, "train", config.train_record_file)
+    build_features(config, dev_examples, "dev", config.dev_record_file)
     build_features(config, test_examples, "test",
-                   config.test_record_file, word2id_dict, is_test=True)
+                   config.test_record_file, is_test=True)
 
     print("done!!!")

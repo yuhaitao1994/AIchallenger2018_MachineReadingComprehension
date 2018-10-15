@@ -8,7 +8,7 @@ model.py：基于R-Net的改进模型，将PtrNet改成分类器
 # -*- coding:utf-8 -*-
 
 import tensorflow as tf
-from nn_func import cudnn_gru, native_gru, dot_attention, summ, dropout, ptr_net
+from nn_func import cudnn_gru, native_gru, dot_attention, summ, dropout
 
 
 class Model(object):
@@ -36,7 +36,7 @@ class Model(object):
         self.is_train = tf.get_variable(
             "is_train", shape=[], dtype=tf.bool, trainable=False)
 
-        # word embeddings的常量
+        # word embeddings的变量,这里定义的是不能训练的
         self.word_mat = tf.get_variable("word_mat", initializer=tf.constant(
             word_mat, dtype=tf.float32), trainable=False)
 
@@ -66,14 +66,19 @@ class Model(object):
         self.RNet()  # 构造R-Net模型
 
         if trainable:
-            self.learning_rate = tf.get_variable(
-                "learning_rate", shape=[], dtype=tf.float32, trainable=False)
             if self.config.optimizer == "Adadelta":
+                self.learning_rate = tf.get_variable(
+                    "learning_rate", shape=[], dtype=tf.float32, trainable=False)
                 self.opt = tf.train.AdadeltaOptimizer(
                     learning_rate=self.learning_rate, epsilon=1e-6)
-            elif self.config.optimizer == "SGD":
-                self.opt = tf.train.GradientDescentOptimizer(
-                    learning_rate=self.learning_rate)
+            elif self.config.optimizer == "Adam":
+                self.learning_rate = tf.get_variable(
+                    "learning_rate", shape=[], dtype=tf.float32, trainable=False)
+                self.opt = tf.train.AdamOptimizer(
+                    learning_rate=self.learning_rate, epsilon=1e-8)
+            else:
+                print("optimizer error!")
+                return
 
             grads = self.opt.compute_gradients(self.loss)
             gradients, variables = zip(*grads)
@@ -104,28 +109,28 @@ class Model(object):
             c = rnn(c_emb, seq_len=self.c_len)
             q = rnn(q_emb, seq_len=self.q_len)
 
-        with tf.variable_scope("attention"):
+        with tf.variable_scope("QP_attention"):
             """
             基于注意力的循环神经网络层，匹配context和question
             """
             # qc_att的shape [batch_size, c_maxlen, 12*hidden]
-            qc_att = dot_attention(inputs=c, memory=q, mask=self.q_mask, hidden=d,
-                                   keep_prob=config.keep_prob, is_train=self.is_train)
-            rnn = gru(num_layers=1, num_units=d, batch_size=batch_size, input_size=qc_att.get_shape(
+            qc_att_ = dot_attention(inputs=c, memory=q, mask=self.q_mask, hidden=d,
+                                    keep_prob=config.keep_prob, is_train=self.is_train)
+            rnn = gru(num_layers=1, num_units=d, batch_size=batch_size, input_size=qc_att_.get_shape(
             ).as_list()[-1], keep_prob=config.keep_prob, is_train=self.is_train)
             # att:[batch_size, c_maxlen, 6*hidden]
-            att = rnn(qc_att, seq_len=self.c_len)
+            qc_att = rnn(qc_att_, seq_len=self.c_len)
 
-        with tf.variable_scope("match"):
+        with tf.variable_scope("passage_match"):
             """
             context自匹配层
             """
-            self_att = dot_attention(
-                att, att, mask=self.c_mask, hidden=d, keep_prob=config.keep_prob, is_train=self.is_train)
-            rnn = gru(num_layers=1, num_units=d, batch_size=batch_size, input_size=self_att.get_shape(
+            c_att = dot_attention(
+                qc_att, qc_att, mask=self.c_mask, hidden=d, keep_prob=config.keep_prob, is_train=self.is_train)
+            rnn = gru(num_layers=1, num_units=d, batch_size=batch_size, input_size=c_att.get_shape(
             ).as_list()[-1], keep_prob=config.keep_prob, is_train=self.is_train)
             # match:[batch_size, c_maxlen, 6*hidden]
-            match = rnn(self_att, seq_len=self.c_len)
+            c_match = rnn(c_att, seq_len=self.c_len)
 
         with tf.variable_scope("YesNo_classification"):
             """
@@ -135,12 +140,12 @@ class Model(object):
             # 这步的作用初始猜测是将question进行pooling操作，然后再输入给一个rnn层进行分类
             init = summ(q[:, :, -2 * d:], d, mask=self.q_mask,
                         keep_prob=config.keep_prob, is_train=self.is_train)
-            match = dropout(match, keep_prob=config.keep_prob,
-                            is_train=self.is_train)
+            c_match_ = dropout(c_match, keep_prob=config.keep_prob,
+                               is_train=self.is_train)
             final_hiddens = init.get_shape().as_list()[-1]
             final_gru = tf.contrib.rnn.GRUCell(final_hiddens)
             _, final_state = tf.nn.dynamic_rnn(
-                final_gru, match, initial_state=init, dtype=tf.float32)
+                final_gru, c_match_, initial_state=init, dtype=tf.float32)
             final_w = tf.get_variable(name="final_w", shape=[final_hiddens, 3])
             final_b = tf.get_variable(name="final_b", shape=[
                                       3], initializer=tf.constant_initializer(0.))
@@ -153,8 +158,12 @@ class Model(object):
             self.classes = tf.cast(
                 tf.argmax(final_softmax, axis=1), dtype=tf.int32, name="classes")
             # 注意stop_gradient的使用，因为answer不是placeholder传进来的，所以要注明不对其计算梯度
-            self.loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
-                logits=self.logits, labels=tf.stop_gradient(self.answer)))
+            if config.loss_function == "focal_loss":
+                self.loss = tf.reduce_mean(sparse_focal_loss(
+                    logits=self.logits, labels=tf.stop_gradient(self.answer)))
+            else:
+                self.loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(
+                    logits=self.logits, labels=tf.stop_gradient(self.answer)))
 
     def get_loss(self):
         return self.loss

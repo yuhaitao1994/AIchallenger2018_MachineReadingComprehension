@@ -9,7 +9,7 @@ config.py：配置文件，程序运行入口
 import os
 import tensorflow as tf
 
-from data_process import prepro
+import data_process
 from main import train, test
 from examine_dev import examine_dev
 
@@ -49,6 +49,7 @@ if not os.path.exists(prediction_dir):
 flags.DEFINE_string("mode", "train", "train/debug/test")
 flags.DEFINE_string("gpu", "0", "0/1")
 flags.DEFINE_string("experiment", "lalala", "每次存不同模型分不同的文件夹")
+flags.DEFINE_string("model_name", "default", "选取不同的模型")
 
 flags.DEFINE_string("target_dir", target_dir, "")
 flags.DEFINE_string("log_dir", log_dir, "")
@@ -67,9 +68,8 @@ flags.DEFINE_string("test_eval_file", test_eval, "")
 flags.DEFINE_string("word2id_file", word2id_file, "")
 flags.DEFINE_string("id2vec_file", id2vec_file, "")
 
-flags.DEFINE_integer("para_limit", 500, "Limit length for paragraph")
-flags.DEFINE_integer("ques_limit", 50, "Limit length for question")
-flags.DEFINE_integer("word_count_limit", -1, "Min count for word")
+flags.DEFINE_integer("para_limit", 150, "Limit length for paragraph")
+flags.DEFINE_integer("ques_limit", 30, "Limit length for question")
 flags.DEFINE_integer("min_count", 1, "embedding 的最小出现次数")
 flags.DEFINE_integer("embedding_size", 300, "the dimension of vector")
 
@@ -81,17 +81,18 @@ flags.DEFINE_boolean("is_bucket", False, "Whether to use bucketing")
 flags.DEFINE_list("bucket_range", [40, 361, 40], "range of bucket")
 
 flags.DEFINE_integer("batch_size", 64, "Batch size")
-flags.DEFINE_integer("num_steps", 150000, "Number of steps")
+flags.DEFINE_integer("num_steps", 200000, "Number of steps")
 flags.DEFINE_integer("checkpoint", 1000, "checkpoint for evaluation")
 flags.DEFINE_integer("period", 500, "period to save batch loss")
 flags.DEFINE_integer("val_num_batches", 150, "Num of batches for evaluation")
-flags.DEFINE_float("init_learning_rate", 1.0,
-                   "Initial learning rate for Adadelta")
+flags.DEFINE_float("init_learning_rate", 0.001,
+                   "Initial learning rate for Adam")
 flags.DEFINE_float("keep_prob", 0.7, "Keep prob in rnn")
 flags.DEFINE_float("grad_clip", 5.0, "Global Norm gradient clipping rate")
 flags.DEFINE_integer("hidden", 60, "Hidden size")  # best:128
 flags.DEFINE_integer("patience", 3, "Patience for learning rate decay")
-flags.DEFINE_string("optimizer", "Adadelta", "Adadelta / SGD")
+flags.DEFINE_string("optimizer", "Adam", "")
+flags.DEFINE_string("loss_function", "default", "")
 
 
 def main(_):
@@ -100,7 +101,7 @@ def main(_):
     if config.mode == "train":
         train(config)
     elif config.mode == "prepro":
-        prepro(config)
+        data_process.prepro(config)
     elif config.mode == "debug":
         config.num_steps = 2
         config.val_num_batches = 1
