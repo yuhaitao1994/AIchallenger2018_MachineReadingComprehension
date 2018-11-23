@@ -1,15 +1,20 @@
 # AIchallenger_MachineReadingComprehension
-AI Challenger 观点型问题阅读理解比赛项目
+AI Challenger 2018 观点型问题阅读理解比赛 8th place solution
+
+****
+Author
+[yuhaitao](#https://github.com/yuhaitao1994) 
+[little_white](#https://github.com/faverous)
+
+[比赛总结](#)
+****
+
+## 1.比赛思路
+
+## 2.baseline
+
+## 3.best single model
+
+## 4.ensemble
 
 
-将三个原始json文件放入/file文件夹中，运行
-
-python3 config.py --mode train
-
-即可开始训练，运行
-
-python3 config.py --mode test
-
-可以得到预测结果/log/prediction/predictions.txt
-
-develop branch
