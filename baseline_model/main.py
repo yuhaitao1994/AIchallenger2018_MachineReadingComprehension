@@ -66,6 +66,7 @@ def train(config):
     loss_save = 100.0
     patience = 0
     lr = config.init_learning_rate
+    emb_lr = config.init_emb_lr
 
     with tf.Session(config=sess_config) as sess:
         writer = tf.summary.FileWriter(log_dir, sess.graph)  # 存储计算图
@@ -76,6 +77,7 @@ def train(config):
         sess.run(tf.assign(model.is_train, tf.constant(True, dtype=tf.bool)))
         sess.run(tf.assign(model.learning_rate,
                            tf.constant(lr, dtype=tf.float32)))
+        # sess.run(tf.assign(model.emb_lr, tf.constant(emb_lr, dtype=tf.float32)))
 
         best_dev_acc = 0.0  # 定义一个最佳验证准确率，只有当准确率高于它才保存模型
         print("Training ...")
@@ -90,6 +92,9 @@ def train(config):
                 lr_sum = tf.Summary(value=[tf.Summary.Value(
                     tag="model/learning_rate", simple_value=sess.run(model.learning_rate)), ])
                 writer.add_summary(lr_sum, global_step)
+                # emb_lr_sum = tf.Summary(value=[tf.Summary.Value(
+                #     tag="model/emb_lr", simple_value=sess.run(model.emb_lr)), ])
+                # writer.add_summary(emb_lr_sum, global_step)
 
             if global_step % config.checkpoint == 0:  # 验证acc，并保存模型
                 sess.run(tf.assign(model.is_train,
@@ -111,35 +116,41 @@ def train(config):
                 writer.flush()  # 将事件文件刷新到磁盘
 
                 # 学习率衰减的策略1
-                # dev_loss = metrics["loss"]
-                # if dev_loss < loss_save:
-                #     loss_save = dev_loss
-                #     patience = 0
-                # else:
-                #     patience += 1
-                # if patience >= config.patience:
-                #     if config.optimizer == "Adam":
-                #         lr *= 0.9
-                #     else:
-                #         lr /= 2.0
-                #     loss_save = dev_loss
-                #     patience = 0
-
-                # 学习率衰减策略2
-                if global_step <= 16000:
-                    lr = config.init_learning_rate
-                elif global_step <= 100000:
-                    lr = config.init_learning_rate / \
-                        math.sqrt((global_step - 12000) / 4000)
-                elif global_dtep <= 150000:
-                    lr = config.init_learning_rate / \
-                        math.sqrt((global_step - 12000) / 3000)
+                if config.optimizer == "Adadelta":
+                    dev_loss = metrics["loss"]
+                    if dev_loss < loss_save:
+                        loss_save = dev_loss
+                        patience = 0
+                    else:
+                        patience += 1
+                    if patience >= config.patience:
+                        lr /= 2.0
+                        loss_save = dev_loss
+                        patience = 0
+                elif config.optimizer == "Adam":
+                    # 学习率衰减策略2
+                    if global_step <= 50000:
+                        lr = config.init_learning_rate
+                    elif global_step <= 100000:
+                        lr = config.init_learning_rate / \
+                            math.sqrt((global_step - 45000) / 5000)
+                        emb_lr = 5e-6
+                    elif global_step <= 200000:
+                        lr = config.init_learning_rate / \
+                            math.sqrt((global_step - 45000) / 1000)
+                        emb_lr = 3e-6
+                    else:
+                        lr = config.init_learning_rate / \
+                            math.sqrt(global_step / 1000)
+                        emb_lr = 1e-6
                 else:
-                    lr = config.init_learning_rate / \
-                        math.sqrt(global_step / 2000)
+                    print("error")
+                    return
 
                 sess.run(tf.assign(model.learning_rate,
                                    tf.constant(lr, dtype=tf.float32)))
+                # sess.run(tf.assign(model.emb_lr, tf.constant(
+                #     emb_lr, dtype=tf.float32)))
 
                 # 保存模型的逻辑
                 if metrics["accuracy"] > best_dev_acc:
@@ -238,3 +249,64 @@ def test(config):
         with codecs.open(prediction_file, 'w', encoding='utf-8') as f:
             f.write(outputs)
         print("done!")
+
+
+def dev(config):
+    with open(config.id2vec_file, "r") as fh:
+        id2vec = np.array(json.load(fh), dtype=np.float32)
+    with open(config.dev_eval_file, "r") as fh:
+        dev_eval_file = json.load(fh)
+
+    total = 29968
+    print("Loading model...")
+    sess_config = tf.ConfigProto(allow_soft_placement=True)
+    sess_config.gpu_options.per_process_gpu_memory_fraction = 0.9
+    sess_config.gpu_options.allow_growth = True
+
+    truth_dict = {}
+    predict_dict = {}
+    logits_dict1 = {}
+    logits_dict2 = {}
+    logits_dict3 = {}
+    logits_dict = {}
+
+    print("model-1 predicting!")
+    g1 = tf.Graph()
+    with tf.Session(graph=g1, config=sess_config) as sess1:
+        with g1.as_default():
+            dev_batch1 = get_dataset(config.dev_record_file, get_record_parser(config),
+                                     config).make_one_shot_iterator()
+            model_1 = Model(
+                config, dev_batch1, id2vec, trainable=False)
+            sess1.run(tf.global_variables_initializer())
+            saver1 = tf.train.Saver()
+            saver1.restore(
+                sess1, "./log/model/model_131000_devAcc_0.732782.ckpt")
+            sess1.run(tf.assign(model_1.is_train,
+                                tf.constant(False, dtype=tf.bool)))
+            for step in tqdm(range(total // config.batch_size + 1)):
+                qa_id, logits, truths = sess1.run(
+                    [model_1.qa_id, model_1.logits, model_1.answer])
+                for ids, logits, truth in zip(qa_id, logits, truths):
+                    logits_dict1[str(ids)] = logits
+                    truth_dict[str(ids)] = truth
+            if len(logits_dict1) != len(dev_eval_file):
+                print("logits1 data number not match")
+
+    print("logits相加，模型融合分类!")
+    predictions = []
+    g4 = tf.Graph()
+    with tf.Session(graph=g4, config=sess_config) as sess4:
+        a = tf.placeholder(shape=[3], dtype=tf.float32, name="mee")
+        b = tf.placeholder(shape=[3], dtype=tf.float32, name="me")
+        c = tf.placeholder(shape=[3], dtype=tf.float32, name="xiaodong")
+        softmax_a = tf.nn.softmax(a)
+        softmax_b = tf.nn.softmax(b)
+        softmax_c = tf.nn.softmax(c)
+        final = 0.4 * softmax_a + 0.4 * softmax_b + 0.2 * softmax_c
+        final_class = tf.cast(tf.argmax(final), dtype=tf.int32)
+        for key, val in truth_dict.items():
+            value = sess4.run(final_class, feed_dict={
+                              a: logits_dict1[key], b: logits_dict2[key], c: logits_dict3[key]})
+            predict_dict[key] = value
+    print(evaluate_acc(truth_dict, predict_dict))

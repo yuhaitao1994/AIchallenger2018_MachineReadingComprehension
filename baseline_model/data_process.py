@@ -13,6 +13,7 @@ import jieba
 import csv
 import word2vec
 import re
+import random
 import tensorflow as tf
 import numpy as np
 from tqdm import tqdm  # 进度条
@@ -316,6 +317,7 @@ def build_features(config, examples, data_type, out_file, is_test=False):
     writer = tf.python_io.TFRecordWriter(out_file)
     total = 0
     meta = {}
+    random.shuffle(examples)  # 先给打乱顺序
     for example in tqdm(examples):
         total += 1
         passage_idxs = np.zeros([para_limit], dtype=np.int32)

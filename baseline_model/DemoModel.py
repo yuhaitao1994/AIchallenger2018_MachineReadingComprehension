@@ -11,15 +11,16 @@ import tensorflow as tf
 import os
 import numpy as np
 import random
-from nn_func import cudnn_gru, native_gru, dot_attention, summ, ptr_net, dropout
+from nn_func import cudnn_gru, native_gru, dot_attention, summ, dropout
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"  # tensorflow的log显示级别
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 hidden = 75
 use_cudnn = False
 batch_size = 2
-learning_rate = 0.00001
+learning_rate = 0.001
+emb_lr = 0.000001
 keep_prob = 0.7
 grad_clip = 5.0
 len_limit = 15
@@ -38,7 +39,7 @@ class DemoModel(object):
                                            initializer=tf.constant_initializer(0), trainable=False)
 
         self.word_mat = tf.get_variable("word_mat", initializer=tf.constant(
-            word_mat, dtype=tf.float32), trainable=False)
+            word_mat, dtype=tf.float32), trainable=True) # 测试一下可训练的word——embedding
 
         self.c_mask = tf.cast(self.passage, tf.bool)
         self.q_mask = tf.cast(self.question, tf.bool)
@@ -60,16 +61,34 @@ class DemoModel(object):
         self.RNet()
 
         if trainable:
+            # 对embedding层设置单独的学习率
+            self.emb_lr = tf.get_variable("emb_lr", shape=[], dtype=tf.float32, trainable=False)
             self.learning_rate = tf.get_variable(
                 "learning_rate", shape=[], dtype=tf.float32, trainable=False)
-            self.opt = tf.train.AdadeltaOptimizer(
-                learning_rate=self.learning_rate, epsilon=1e-6)
-            grads = self.opt.compute_gradients(self.loss)
-            gradients, variables = zip(*grads)
+            self.emb_opt = tf.train.AdamOptimizer(learning_rate=self.emb_lr, epsilon=1e-8)
+            self.opt = tf.train.AdamOptimizer(
+                learning_rate=self.learning_rate, epsilon=1e-8)
+            # 区分不同的变量列表
+            self.var_list = tf.trainable_variables()
+            var_list1 = []
+            var_list2 = []
+            for var in self.var_list:
+                if var.op.name == "word_mat":
+                    var_list1.append(var)
+                else:
+                    var_list2.append(var)
+
+            grads = tf.gradients(self.loss, var_list1 + var_list2)
+            # grads = self.opt.compute_gradients(self.loss)
+            # gradients, variables = zip(*grads)
             capped_grads, _ = tf.clip_by_global_norm(
-                gradients, grad_clip)
-            self.train_op = self.opt.apply_gradients(
-                zip(capped_grads, variables), global_step=self.global_step)
+                grads, grad_clip)
+            grads1 = capped_grads[:len(var_list1)]
+            grads2 = capped_grads[len(var_list1):]
+            self.train_op1 = self.emb_opt.apply_gradients(
+                zip(grads1, var_list1), global_step=self.global_step)
+            self.train_op2 = self.opt.apply_gradients(zip(grads2, var_list2))
+            self.train_op = tf.group(self.train_op1, self.train_op2)
 
     def RNet(self):
         PL, QL, d = self.c_maxlen, self.q_maxlen, hidden
@@ -304,6 +323,7 @@ def main(_):
         sess.run(tf.global_variables_initializer())
         sess.run(tf.assign(model.learning_rate,
                            tf.constant(learning_rate, dtype=tf.float32)))
+        sess.run(tf.assign(model.emb_lr, tf.constant(emb_lr, dtype=tf.float32)))
 
         dev_p, dev_q, dev_a, dev_id = get_bacth(dev_2_examples, word2idx_dict, batch_size)
         
@@ -314,7 +334,7 @@ def main(_):
                     t += 1
             return (t / len(outputs)) * 1.0
 
-        for i in range(10000):
+        for i in range(10):
             global_step = sess.run(model.global_step) + 1
             random.shuffle(train_examples)
             train_p, train_q, train_a, train_id = get_bacth(train_2_examples, word2idx_dict, batch_size)
@@ -327,7 +347,7 @@ def main(_):
             # 输出
             train_acc = get_acc(t_classes, train_a)
             dev_acc = get_acc(d_classes, dev_a)
-            if (i + 1) % 100 == 0:
+            if (i + 1) % 1 == 0:
                 print("steps:{},train_loss:{:.4f},train_acc:{:.4f},dev_loss:{:.4f},dev_acc:{:.4f}"\
                     .format(global_step, train_loss, train_acc, dev_loss, dev_acc))
                 for j in range(2):

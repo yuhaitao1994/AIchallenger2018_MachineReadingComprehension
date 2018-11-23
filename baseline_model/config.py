@@ -10,7 +10,8 @@ import os
 import tensorflow as tf
 
 import data_process
-from main import train, test
+from main import train, test, dev
+from file_save import *
 from examine_dev import examine_dev
 
 flags = tf.flags
@@ -78,21 +79,22 @@ flags.DEFINE_integer("num_threads", 4, "Number of threads in input pipeline")
 # 使用cudnn训练，提升6倍速度
 flags.DEFINE_boolean("use_cudnn", True, "Whether to use cudnn (only for GPU)")
 flags.DEFINE_boolean("is_bucket", False, "Whether to use bucketing")
-flags.DEFINE_list("bucket_range", [40, 361, 40], "range of bucket")
 
 flags.DEFINE_integer("batch_size", 64, "Batch size")
-flags.DEFINE_integer("num_steps", 200000, "Number of steps")
+flags.DEFINE_integer("num_steps", 250000, "Number of steps")
 flags.DEFINE_integer("checkpoint", 1000, "checkpoint for evaluation")
 flags.DEFINE_integer("period", 500, "period to save batch loss")
 flags.DEFINE_integer("val_num_batches", 150, "Num of batches for evaluation")
 flags.DEFINE_float("init_learning_rate", 0.001,
                    "Initial learning rate for Adam")
+flags.DEFINE_float("init_emb_lr", 0., "")
 flags.DEFINE_float("keep_prob", 0.7, "Keep prob in rnn")
 flags.DEFINE_float("grad_clip", 5.0, "Global Norm gradient clipping rate")
 flags.DEFINE_integer("hidden", 60, "Hidden size")  # best:128
-flags.DEFINE_integer("patience", 3, "Patience for learning rate decay")
+flags.DEFINE_integer("patience", 5, "Patience for learning rate decay")
 flags.DEFINE_string("optimizer", "Adam", "")
 flags.DEFINE_string("loss_function", "default", "")
+flags.DEFINE_boolean("use_dropout", True, "")
 
 
 def main(_):
@@ -112,6 +114,12 @@ def main(_):
         test(config)
     elif config.mode == "examine":
         examine_dev(config)
+    elif config.mode == "save_dev":
+        save_dev(config)
+    elif config.mode == "save_test":
+        save_test(config)
+    elif config.mode == "ensemble":
+        load_devsoft()
     else:
         print("Unknown mode")
         exit(0)

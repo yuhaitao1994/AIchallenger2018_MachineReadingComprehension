@@ -94,3 +94,10 @@ def evaluate_acc(truth_dict, answer_dict):
             wrong += 1
     accuracy = (right / total) * 1.0
     return {"accuracy": accuracy}
+
+def f1_score(truth_dict, answer_dict):
+    """
+    计算平均f1分数
+    """
+    
+

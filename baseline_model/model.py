@@ -66,18 +66,18 @@ class Model(object):
         self.RNet()  # 构造R-Net模型
 
         if trainable:
-            if self.config.optimizer == "Adadelta":
-                self.learning_rate = tf.get_variable(
-                    "learning_rate", shape=[], dtype=tf.float32, trainable=False)
-                self.opt = tf.train.AdadeltaOptimizer(
-                    learning_rate=self.learning_rate, epsilon=1e-6)
-            elif self.config.optimizer == "Adam":
-                self.learning_rate = tf.get_variable(
-                    "learning_rate", shape=[], dtype=tf.float32, trainable=False)
+
+            self.learning_rate = tf.get_variable(
+                "learning_rate", shape=[], dtype=tf.float32, trainable=False)
+
+            if config.optimizer == "Adam":
                 self.opt = tf.train.AdamOptimizer(
                     learning_rate=self.learning_rate, epsilon=1e-8)
+            elif config.optimizer == "Adadelta":
+                self.opt = tf.train.AdadeltaOptimizer(
+                    learning_rate=self.learning_rate, epsilon=1e-6)
             else:
-                print("optimizer error!")
+                print("optimizer error")
                 return
 
             grads = self.opt.compute_gradients(self.loss)
@@ -86,6 +86,36 @@ class Model(object):
                 gradients, config.grad_clip)
             self.train_op = self.opt.apply_gradients(
                 zip(capped_grads, variables), global_step=self.global_step)
+
+            # # 对embedding层设置单独的学习率
+            # self.emb_lr = tf.get_variable(
+            #     "emb_lr", shape=[], dtype=tf.float32, trainable=False)
+            # self.learning_rate = tf.get_variable(
+            #     "learning_rate", shape=[], dtype=tf.float32, trainable=False)
+            # self.emb_opt = tf.train.AdamOptimizer(
+            #     learning_rate=self.emb_lr, epsilon=1e-8)
+            # self.opt = tf.train.AdamOptimizer(
+            #     learning_rate=self.learning_rate, epsilon=1e-8)
+            # # 区分不同的变量列表
+            # self.var_list = tf.trainable_variables()
+            # var_list1 = []
+            # var_list2 = []
+            # for var in self.var_list:
+            #     if var.op.name == "word_mat":
+            #         var_list1.append(var)
+            #     else:
+            #         var_list2.append(var)
+
+            # grads = tf.gradients(self.loss, var_list1 + var_list2)
+            # capped_grads, _ = tf.clip_by_global_norm(
+            #     grads, config.grad_clip)
+            # grads1 = capped_grads[:len(var_list1)]
+            # grads2 = capped_grads[len(var_list1):]
+            # self.train_op1 = self.emb_opt.apply_gradients(
+            #     zip(grads1, var_list1))
+            # self.train_op2 = self.opt.apply_gradients(
+            #     zip(grads2, var_list2), global_step=self.global_step)
+            # self.train_op = tf.group(self.train_op1, self.train_op2)
 
     def RNet(self):
         config = self.config
