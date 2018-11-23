@@ -118,8 +118,6 @@ def main(_):
         save_dev(config)
     elif config.mode == "save_test":
         save_test(config)
-    elif config.mode == "ensemble":
-        load_devsoft()
     else:
         print("Unknown mode")
         exit(0)
