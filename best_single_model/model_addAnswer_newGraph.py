@@ -37,9 +37,13 @@ class Model(object):
         self.is_train = tf.get_variable(
             "is_train", shape=[], dtype=tf.bool, trainable=False)
 
-        # word embeddings的变量,这里定义的是不能训练的
-        self.word_mat = tf.get_variable("word_mat", initializer=tf.constant(
-            word_mat, dtype=tf.float32), trainable=False)
+        # word embeddings的变量,可以选择是否训练.
+        if self.config.training_embedding:
+            self.word_mat = tf.get_variable("word_mat", initializer=tf.constant(
+                word_mat, dtype=tf.float32), trainable=True)
+        else:
+            self.word_mat = tf.get_variable("word_mat", initializer=tf.constant(
+                word_mat, dtype=tf.float32), trainable=False)
 
         with tf.name_scope("process"):
             # tf.cast将tensor转换为bool类型，生成mask，有值部分用true，空值用false

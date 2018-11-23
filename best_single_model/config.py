@@ -12,7 +12,6 @@ import data_process_addAnswer
 from main import train, test
 from file_save import *
 from examine_dev import examine_dev
-from transfer import *
 
 flags = tf.flags
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
