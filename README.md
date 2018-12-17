@@ -26,7 +26,7 @@ AI Challenger 2018 观点型问题阅读理解比赛 8th place solution
 |Python|>=3.5
 |TensorFlow|>=1.6
 
-## 3.baseline
+## **3.baseline**
 
 baseline模型借鉴了微软R-Net模型，感谢[HKUST-KnowComp](https://github.com/HKUST-KnowComp/R-Net)的tensorflow实现代码。
 
@@ -53,7 +53,7 @@ baseline模型借鉴了微软R-Net模型，感谢[HKUST-KnowComp](https://github
     python config.py --mode test
 
 
-## 4.best single model
+## **4.best single model**
 
 最好成绩的单模型我们选择加入alternatives语义和feature engineering的方式，基于R-Net改进。
 
@@ -64,7 +64,7 @@ baseline模型借鉴了微软R-Net模型，感谢[HKUST-KnowComp](https://github
 ### 模型结构
 ![best single model](/pics/model.png)
 
-## 5.ensemble
+## **5.ensemble**
 
 最终提交的test_B结果共采用了16个模型进行融合，融合的方式为stacking，在验证集上训练各模型softmax层所占权重。这种方式可能会造成在验证集上的过拟合，但据实际测试，并没有发生此问题。
 
@@ -73,6 +73,9 @@ baseline模型借鉴了微软R-Net模型，感谢[HKUST-KnowComp](https://github
 ### ensemble使用方式
 
 训练集成模型的权重
-    python ensemble_train.py 
+
+    python ensemble_train.py
+
 预测test_A的结果
+
     python ensemble_predict.py
