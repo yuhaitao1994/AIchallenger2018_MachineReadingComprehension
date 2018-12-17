@@ -34,7 +34,7 @@ baseline模型借鉴了微软R-Net模型，感谢[HKUST-KnowComp](https://github
 
 ## 4.best single model
 
-最好成绩的单模型我们选择加入alternatives语义和feature engineering的方式。
+最好成绩的单模型我们选择加入alternatives语义和feature engineering的方式，基于R-Net改进。
 alternatives语义：由于观点型问题的某些备选答案是携带语义信息的，所以我们将备选答案也做encoding处理。
 feature engneering：特征工程，我们使用了tf-idf等方法，将提取的特征向量作为深度模型的另一个输入，只用Linear层进行处理。由于阅读理解任务数据的特性，特征工程这部分工作只有微弱提升，没有公开代码。
 
