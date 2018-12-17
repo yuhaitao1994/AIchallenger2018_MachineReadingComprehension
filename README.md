@@ -23,13 +23,14 @@ AI Challenger 2018 观点型问题阅读理解比赛 8th place solution
 
 ## 3.baseline
 
+baseline模型借鉴了微软R-Net模型，感谢[HKUST-KnowComp](https://github.com/HKUST-KnowComp/R-Net)的tensorflow实现代码。
 
 
 ## 4.best single model
 
-最终的单模型我们选择了加入alternatives语义和feature engineering的方式。
+最好成绩的单模型我们选择加入alternatives语义和feature engineering的方式。
 
-[![](/pics/model.png "model")][model]
+[](/pics/model.png)
 
 ## 5.ensemble
 
